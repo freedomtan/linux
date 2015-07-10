@@ -217,11 +217,16 @@ static int __init parse_cpu_capacity(struct device_node *cpu_node, int cpu)
 	return !ret;
 }
 
+static const struct sched_group_energy * const cpu_core_energy(int cpu);
+
 static void normalize_cpu_capacity(void)
 {
 	u64 capacity;
 	int cpu;
 	bool asym = false;
+
+	if (cpu_core_energy(0))
+		return;
 
 	if (!raw_capacity || cap_parsing_failed)
 		return;
@@ -432,10 +437,17 @@ static void __init parse_dt_topology(void)
  */
 static void update_cpu_capacity(unsigned int cpu)
 {
-	if (!cpu_capacity(cpu) || cap_from_dt)
-		return;
+	if (cpu_core_energy(cpu)) {
+		unsigned long capacity;
+		int max_cap_idx = cpu_core_energy(cpu)->nr_cap_states - 1;
+		capacity = cpu_core_energy(cpu)->cap_states[max_cap_idx].cap;
+		set_capacity_scale(cpu, capacity);
+	} else {
+		if (!cpu_capacity(cpu) || cap_from_dt)
+			return;
 
-	set_capacity_scale(cpu, cpu_capacity(cpu) / middle_capacity);
+		set_capacity_scale(cpu, cpu_capacity(cpu) / middle_capacity);
+	}
 
 	if (scale_cpu_capacity(NULL, cpu) < SCHED_CAPACITY_SCALE)
 		asym_cpucap = true;
