@@ -327,6 +327,20 @@
 			      (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>;
 	};
 
+	pmu_a53 {
+		compatible = "arm,cortex-a53-pmu";
+		interrupts = <GIC_SPI 60 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 61 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-affinity = <&cpu0>, <&cpu1>;
+	};
+
+	pmu_a57 {
+		compatible = "arm,cortex-a57-pmu";
+		interrupts = <GIC_SPI 62 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 63 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-affinity = <&cpu2>, <&cpu3>;
+	};
+
 	soc {
 		#address-cells = <2>;
 		#size-cells = <2>;
