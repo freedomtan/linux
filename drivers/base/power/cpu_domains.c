@@ -9,6 +9,7 @@
  */
 
 #include <linux/cpu.h>
+#include <linux/cpumask.h>
 #include <linux/cpu_domains.h>
 #include <linux/cpu_pm.h>
 #include <linux/device.h>
@@ -27,6 +28,7 @@ struct cpu_pm_domain {
 	struct cpu_pd_ops ops;
 	struct generic_pm_domain *genpd;
 	struct cpu_pm_domain *parent;
+	cpumask_var_t cpus;
 };
 
 /* List of CPU PM domains we care about */
@@ -50,7 +52,7 @@ struct cpu_pm_domain *to_cpu_pd(struct generic_pm_domain *d)
 	return res;
 }
 
-static int cpu_pd_attach_cpu(int cpu)
+static int cpu_pd_attach_cpu(struct cpu_pm_domain *cpu_pd, int cpu)
 {
 	int ret;
 	struct device *cpu_dev;
@@ -70,6 +72,11 @@ static int cpu_pd_attach_cpu(int cpu)
 	else
 		dev_dbg(cpu_dev, "Attached to domain\n");
 
+	while (!ret && cpu_pd) {
+		cpumask_set_cpu(cpu, cpu_pd->cpus);
+		cpu_pd = cpu_pd->parent;
+	};
+
 	return ret;
 }
 
@@ -85,8 +92,8 @@ static int cpu_pd_power_off(struct generic_pm_domain *genpd)
 	struct cpu_pm_domain *pd = to_cpu_pd(genpd);
 
 	return pd->ops.power_off ? pd->ops.power_off(genpd->state_idx,
-					genpd->states[genpd->state_idx].param),
-					: 0;
+					genpd->states[genpd->state_idx].param,
+					pd->cpus) : 0;
 }
 
 /**
@@ -119,6 +126,9 @@ static struct generic_pm_domain *of_init_cpu_pm_domain(struct device_node *dn,
 	if (!pd)
 		goto fail;
 
+	if (!zalloc_cpumask_var(&pd->cpus, GFP_KERNEL))
+		goto fail;
+
 	pd->genpd = genpd;
 	pd->genpd->power_off = cpu_pd_power_off;
 	pd->genpd->power_on = cpu_pd_power_on;
@@ -149,6 +159,8 @@ fail:
 
 	kfree(genpd->name);
 	kfree(genpd);
+	if (pd)
+		kfree(pd->cpus);
 	kfree(pd);
 	return ERR_PTR(ret);
 }
@@ -224,6 +236,7 @@ int of_setup_cpu_pd_single(int cpu, const struct cpu_pd_ops *ops)
 
 	struct device_node *dn;
 	struct generic_pm_domain *genpd;
+	struct cpu_pm_domain *cpu_pd;
 
 	dn = of_get_cpu_node(cpu, NULL);
 	if (!dn)
@@ -239,7 +252,14 @@ int of_setup_cpu_pd_single(int cpu, const struct cpu_pd_ops *ops)
 		return PTR_ERR(genpd);
 
 	of_node_put(dn);
-	return cpu_pd_attach_cpu(cpu);
+	cpu_pd = to_cpu_pd(genpd);
+	if (!cpu_pd) {
+		pr_err("%s: Genpd was created outside CPU PM domains\n",
+				__func__);
+		return -ENOENT;
+	}
+
+	return cpu_pd_attach_cpu(cpu_pd, cpu);
 }
 EXPORT_SYMBOL(of_setup_cpu_pd_single);
 

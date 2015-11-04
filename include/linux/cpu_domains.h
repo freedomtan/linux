@@ -13,8 +13,10 @@
 
 #include <linux/types.h>
 
+struct cpumask;
+
 struct cpu_pd_ops {
-	int (*power_off)(u32 state_idx, u32 param);
+	int (*power_off)(u32 state_idx, u32 param, const struct cpumask *mask);
 	int (*power_on)(void);
 };
 
