@@ -562,6 +562,49 @@ TRACE_EVENT(sched_wake_idle_without_ipi,
 
 	TP_printk("cpu=%d", __entry->cpu)
 );
+
+/*
+ * Tracepoint for cfs_rq Per Entity Load Tracking (PELT).
+ */
+TRACE_EVENT(sched_pelt_cfs_rq,
+
+	TP_PROTO(struct cfs_rq *cfs_rq),
+
+	TP_ARGS(cfs_rq),
+
+	TP_STRUCT__entry(
+		__field( int,		cpu			)
+		__field( int,		id			)
+		__field( unsigned long,	load_avg		)
+		__field( unsigned long,	util_avg		)
+		__field( u64,		load_sum		)
+		__field( u32,		util_sum		)
+		__field( u32,		period_contrib		)
+		__field( u64,		last_update_time	)
+	),
+
+	TP_fast_assign(
+#ifdef CONFIG_FAIR_GROUP_SCHED
+		__entry->cpu			= cfs_rq->rq->cpu;
+		__entry->id			= cfs_rq->tg->css.id;
+#else
+		__entry->cpu			= (container_of(cfs_rq, struct rq, cfs))->cpu;
+		__entry->id			= -1;
+#endif
+		__entry->load_avg		= cfs_rq->avg.load_avg;
+		__entry->util_avg		= cfs_rq->avg.util_avg;
+		__entry->load_sum		= cfs_rq->avg.load_sum;
+		__entry->util_sum		= cfs_rq->avg.util_sum;
+		__entry->period_contrib		= cfs_rq->avg.period_contrib;
+		__entry->last_update_time	= cfs_rq->avg.last_update_time;
+	),
+
+	TP_printk("cpu=%d tg_css_id=%d load_avg=%lu util_avg=%lu"
+		  " load_sum=%llu util_sum=%u period_contrib=%u last_update_time=%llu",
+		  __entry->cpu, __entry->id, __entry->load_avg,
+		  __entry->util_avg, __entry->load_sum, __entry->util_sum,
+		  __entry->period_contrib, __entry->last_update_time)
+);
 #endif /* _TRACE_SCHED_H */
 
 /* This part must be outside protection */
