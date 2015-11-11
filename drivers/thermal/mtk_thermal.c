@@ -123,6 +123,7 @@ struct mtk_thermal;
 
 struct mtk_thermal_bank {
 	struct mtk_thermal *mt;
+	struct thermal_zone_device *tz;
 	int id;
 };
 
@@ -295,21 +296,11 @@ static int mtk_thermal_bank_temperature(struct mtk_thermal_bank *bank)
 
 static int mtk_read_temp(void *data, int *temperature)
 {
-	struct mtk_thermal *mt = data;
-	int i;
-	int tempmax = INT_MIN;
+	struct mtk_thermal_bank *bank = data;
 
-	for (i = 0; i < MT8173_NUM_ZONES; i++) {
-		struct mtk_thermal_bank *bank = &mt->banks[i];
-
-		mtk_thermal_get_bank(bank);
-
-		tempmax = max(tempmax, mtk_thermal_bank_temperature(bank));
-
-		mtk_thermal_put_bank(bank);
-	}
-
-	*temperature = tempmax;
+	mtk_thermal_get_bank(bank);
+	*temperature = mtk_thermal_bank_temperature(bank);
+	mtk_thermal_put_bank(bank);
 
 	return 0;
 }
@@ -571,8 +562,11 @@ static int mtk_thermal_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, mt);
 
-	devm_thermal_zone_of_sensor_register(&pdev->dev, 0, mt,
-					     &mtk_thermal_ops);
+	for (i = 0; i < MT8173_NUM_ZONES; i++) {
+		struct mtk_thermal_bank *bank = &mt->banks[i];
+		bank->tz = devm_thermal_zone_of_sensor_register(&pdev->dev,
+			i, bank, &mtk_thermal_ops);
+	}
 
 	return 0;
 
