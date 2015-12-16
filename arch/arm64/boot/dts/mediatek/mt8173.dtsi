@@ -133,6 +133,10 @@
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
 			operating-points-v2 = <&cluster0_opp>;
+			#cooling-cells = <2>;
+			#cooling-min-level = <0>;
+			#cooling-max-level = <7>;
+			dynamic-power-coefficient = <263>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
 			power-domains = <&CPU_PD0>;
@@ -147,6 +151,10 @@
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
 			operating-points-v2 = <&cluster0_opp>;
+			#cooling-cells = <2>;
+			#cooling-min-level = <0>;
+			#cooling-max-level = <7>;
+			dynamic-power-coefficient = <263>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
 			power-domains = <&CPU_PD0>;
@@ -161,6 +169,10 @@
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
 			operating-points-v2 = <&cluster1_opp>;
+			#cooling-cells = <2>;
+			#cooling-min-level = <0>;
+			#cooling-max-level = <7>;
+			dynamic-power-coefficient = <263>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
 			power-domains = <&CPU_PD1>;
@@ -175,6 +187,10 @@
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
 			operating-points-v2 = <&cluster1_opp>;
+			#cooling-cells = <2>;
+			#cooling-min-level = <0>;
+			#cooling-max-level = <7>;
+			dynamic-power-coefficient = <263>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
 			power-domains = <&CPU_PD1>;
