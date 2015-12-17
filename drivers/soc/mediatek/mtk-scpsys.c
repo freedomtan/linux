@@ -582,6 +582,7 @@ static const struct scp_domain_data scp_domain_data_mt2701[] = {
 static int __init scpsys_probe_mt2701(struct platform_device *pdev)
 {
 	struct scp *scp;
+	int ret;
 
 	scp = init_scp(pdev, scp_domain_data_mt2701, NUM_DOMAINS_MT2701);
 	if (IS_ERR(scp))
