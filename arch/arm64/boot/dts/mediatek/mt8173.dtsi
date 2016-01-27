@@ -285,12 +285,12 @@
 	};
 
 	thermal-zones {
-		cpu_thermal: cpu_thermal {
+		cpu_thermal0: cpu_thermal0 {
 			polling-delay-passive = <1000>; /* milliseconds */
 			polling-delay = <1000>; /* milliseconds */
 
-			thermal-sensors = <&thermal>;
-			sustainable-power = <1500>; /* milliwatts */
+			thermal-sensors = <&thermal 0>;
+			sustainable-power = <500>; /* milliwatts */
 
 			trips {
 				threshold: trip-point@0 {
@@ -318,10 +318,97 @@
 					cooling-device = <&cpu0 0 0>;
 					contribution = <1024>;
 				};
+			};
+		};
+
+		cpu_thermal1: cpu_thermal1 {
+			polling-delay-passive = <1000>; /* milliseconds */
+			polling-delay = <1000>; /* milliseconds */
+
+			thermal-sensors = <&thermal 1>;
+			sustainable-power = <1500>; /* milliwatts */
+
+			trips {
+				threshold1: trip-point@0 {
+					temperature = <68000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				target1: trip-point@1 {
+					temperature = <85000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				cpu_crit1: cpu_crit@0 {
+					temperature = <115000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
+			};
+		};
+
+		cpu_thermal2: cpu_thermal2 {
+			polling-delay-passive = <1000>; /* milliseconds */
+			polling-delay = <1000>; /* milliseconds */
+
+			thermal-sensors = <&thermal 2>;
+			sustainable-power = <1500>; /* milliwatts */
+
+			trips {
+				threshold2: trip-point@0 {
+					temperature = <68000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				target2: trip-point@1 {
+					temperature = <85000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				cpu_crit2: cpu_crit@0 {
+					temperature = <115000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
+			};
+
+			cooling-maps {
 				map@1 {
-					trip = <&target>;
+					trip = <&target2>;
 					cooling-device = <&cpu2 0 0>;
 					contribution = <2048>;
+				};
+			};
+		};
+
+		cpu_thermal3: cpu_thermal3 {
+			polling-delay-passive = <1000>; /* milliseconds */
+			polling-delay = <1000>; /* milliseconds */
+
+			thermal-sensors = <&thermal 3>;
+			sustainable-power = <1500>; /* milliwatts */
+
+			trips {
+				threshold3: trip-point@0 {
+					temperature = <68000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				target3: trip-point@1 {
+					temperature = <85000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				cpu_crit3: cpu_crit@0 {
+					temperature = <115000>;
+					hysteresis = <2000>;
+					type = "critical";
 				};
 			};
 		};
