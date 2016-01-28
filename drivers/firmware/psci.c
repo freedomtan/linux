@@ -52,6 +52,8 @@
  * require cooperation with a Trusted OS driver.
  */
 static int resident_cpu = -1;
+static bool psci_has_osi_pd;
+static bool psci_suspend_mode_is_osi;
 
 bool psci_tos_resident_on(int cpu)
 {
@@ -245,6 +247,26 @@ static int __init psci_features(u32 psci_func_id)
 {
 	return invoke_psci_fn(PSCI_1_0_FN_PSCI_FEATURES,
 			      psci_func_id, 0, 0);
+}
+
+static int psci_set_suspend_mode_osi(bool enable)
+{
+	int ret;
+	int mode;
+
+	if (enable && !psci_has_osi_pd)
+		return -ENODEV;
+
+	if (enable == psci_suspend_mode_is_osi)
+		return 0;
+
+	mode = enable ? PSCI_1_0_SUSPEND_MODE_OSI : PSCI_1_0_SUSPEND_MODE_PC;
+	ret = invoke_psci_fn(PSCI_1_0_FN_SET_SUSPEND_MODE,
+			     mode, 0, 0);
+	if (!ret)
+		psci_suspend_mode_is_osi = enable;
+
+	return psci_to_linux_errno(ret);
 }
 
 #ifdef CONFIG_CPU_IDLE
@@ -563,10 +585,29 @@ out_put_node:
 	return err;
 }
 
+static int __init psci_1_0_init(struct device_node *np)
+{
+	int ret;
+
+	ret = psci_0_2_init(np);
+	if (ret)
+		return ret;
+
+	/* Check if PSCI OSI mode is available */
+	ret = psci_features(psci_function_id[PSCI_FN_CPU_SUSPEND]);
+	if (ret & PSCI_1_0_OS_INITIATED) {
+		ret = psci_features(PSCI_1_0_FN_SET_SUSPEND_MODE);
+		if (!ret)
+			psci_has_osi_pd = true;
+	}
+
+	return 0;
+}
+
 static const struct of_device_id psci_of_match[] __initconst = {
 	{ .compatible = "arm,psci",	.data = psci_0_1_init},
 	{ .compatible = "arm,psci-0.2",	.data = psci_0_2_init},
-	{ .compatible = "arm,psci-1.0",	.data = psci_0_2_init},
+	{ .compatible = "arm,psci-1.0",	.data = psci_1_0_init},
 	{},
 };
 
