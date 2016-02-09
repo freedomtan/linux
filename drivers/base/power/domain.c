@@ -1325,6 +1325,95 @@ void pm_genpd_init(struct generic_pm_domain *genpd,
 EXPORT_SYMBOL_GPL(pm_genpd_init);
 
 #ifdef CONFIG_PM_GENERIC_DOMAINS_OF
+static int of_get_genpd_power_state(struct genpd_power_state *genpd_state,
+					   struct device_node *state_node)
+{
+	int err = 0;
+	u32 latency;
+	u32 residency;
+	u32 param;
+	u32 entry_latency, exit_latency;
+
+	err = of_property_read_u32(state_node, "entry-latency-us",
+				   &entry_latency);
+	if (err) {
+		pr_debug(" * %s missing entry-latency-us property\n",
+			 state_node->full_name);
+		return -EINVAL;
+	}
+
+	err = of_property_read_u32(state_node, "exit-latency-us",
+				   &exit_latency);
+	if (err) {
+		pr_debug(" * %s missing exit-latency-us property\n",
+			 state_node->full_name);
+		return -EINVAL;
+	}
+
+	err = of_property_read_u32(state_node, "residency-us", &residency);
+	if (!err)
+		genpd_state->residency_ns = 1000 * residency;
+
+	err = of_property_read_u32(state_node, "state-param", &param);
+	if (!err)
+		genpd_state->param = param;
+
+	latency = entry_latency + exit_latency;
+	genpd_state->power_on_latency_ns = 1000 * latency;
+	genpd_state->power_off_latency_ns = 1000 * entry_latency;
+
+	return 0;
+}
+
+static int of_genpd_device_parse_states(struct device_node *np,
+		struct generic_pm_domain *genpd)
+{
+	struct device_node *state_node;
+	int i, err = 0;
+
+	for (i = 0; i < GENPD_MAX_NUM_STATES; i++) {
+		state_node = of_parse_phandle(np, "power-states", i);
+		if (!state_node)
+			break;
+
+		err = of_get_genpd_power_state(&genpd->states[i], state_node);
+		if (err) {
+			pr_err
+			    ("Parsing idle state node %s failed with err %d\n",
+			     state_node->full_name, err);
+			err = -EINVAL;
+			break;
+		}
+		of_node_put(state_node);
+	}
+
+	if (err)
+		return err;
+
+	genpd->state_count = i;
+	return 0;
+}
+
+int of_pm_genpd_init(struct device_node *dn, struct generic_pm_domain *genpd,
+		   struct dev_power_governor *gov, bool is_off)
+{
+	int ret;
+
+	if (IS_ERR_OR_NULL(genpd))
+		return -EINVAL;
+
+	ret = of_genpd_device_parse_states(dn, genpd);
+	if (ret) {
+		pr_err("Error parsing genpd states for %s\n", genpd->name);
+		return ret;
+	}
+
+	pm_genpd_init(genpd, gov, is_off);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(of_pm_genpd_init);
+
 /*
  * Device Tree based PM domain providers.
  *

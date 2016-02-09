@@ -40,6 +40,8 @@ struct gpd_dev_ops {
 struct genpd_power_state {
 	s64 power_off_latency_ns;
 	s64 power_on_latency_ns;
+	s64 residency_ns;
+	u32 param;
 };
 
 struct generic_pm_domain {
@@ -195,6 +197,8 @@ typedef struct generic_pm_domain *(*genpd_xlate_t)(struct of_phandle_args *args,
 						void *data);
 
 #ifdef CONFIG_PM_GENERIC_DOMAINS_OF
+int of_pm_genpd_init(struct device_node *dn, struct generic_pm_domain *genpd,
+		   struct dev_power_governor *gov, bool is_off);
 int __of_genpd_add_provider(struct device_node *np, genpd_xlate_t xlate,
 			void *data);
 void of_genpd_del_provider(struct device_node *np);
@@ -210,6 +214,13 @@ struct generic_pm_domain *__of_genpd_xlate_onecell(
 
 int genpd_dev_pm_attach(struct device *dev);
 #else /* !CONFIG_PM_GENERIC_DOMAINS_OF */
+static inline int of_pm_genpd_init(struct device_node *dn,
+			struct generic_pm_domain *genpd,
+			struct dev_power_governor *gov,
+			bool is_off)
+{
+	return -ENODEV;
+}
 static inline int __of_genpd_add_provider(struct device_node *np,
 					genpd_xlate_t xlate, void *data)
 {
