@@ -32,6 +32,16 @@
 		reg = <0 0x40000000 0 0x80000000>;
 	};
 
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		atf_reserverd: atf@43100000 {
+			reg = <0 0x43100000 0 0x20000>;
+		};
+	};
+
 	chosen { };
 
 	usb_p1_vbus: regulator@0 {
