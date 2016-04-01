@@ -270,6 +270,13 @@ static int mt6397_probe(struct platform_device *pdev)
 		goto fail_irq;
 	}
 
+	pmic->irq = platform_get_irq(pdev, 0);
+	if (pmic->irq > 0) {
+		ret = mt6397_irq_init(pmic);
+		if (ret)
+			return ret;
+	}
+
 	switch (id & 0xff) {
 	case MT6323_CID_CODE:
 		pmic->int_con[0] = MT6323_INT_CON0;
@@ -294,13 +301,6 @@ static int mt6397_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "unsupported chip: %d\n", id);
 		ret = -ENODEV;
 		break;
-	}
-
-	pmic->irq = platform_get_irq(pdev, 0);
-	if (pmic->irq > 0) {
-		ret = mt6397_irq_init(pmic);
-		if (ret)
-			return ret;
 	}
 
 fail_irq:
