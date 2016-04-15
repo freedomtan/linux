@@ -128,6 +128,7 @@
 			device_type = "cpu";
 			compatible = "arm,cortex-a53";
 			reg = <0x000>;
+			next-level-cache = <&L2_0>;
 			clocks = <&infracfg CLK_INFRA_CA53SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
@@ -141,6 +142,7 @@
 			device_type = "cpu";
 			compatible = "arm,cortex-a53";
 			reg = <0x001>;
+			next-level-cache = <&L2_0>;
 			clocks = <&infracfg CLK_INFRA_CA53SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
@@ -154,6 +156,7 @@
 			device_type = "cpu";
 			compatible = "arm,cortex-a57";
 			reg = <0x100>;
+			next-level-cache = <&L2_1>;
 			clocks = <&infracfg CLK_INFRA_CA57SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
@@ -167,6 +170,7 @@
 			device_type = "cpu";
 			compatible = "arm,cortex-a57";
 			reg = <0x101>;
+			next-level-cache = <&L2_1>;
 			clocks = <&infracfg CLK_INFRA_CA57SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
@@ -174,6 +178,14 @@
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
 			power-domains = <&CPU_PD1>;
+		};
+
+		L2_0: l2-cache0 {
+			compatible = "cache";
+		};
+
+		L2_1: l2-cache1 {
+			compatible = "cache";
 		};
 
 		idle-states {
