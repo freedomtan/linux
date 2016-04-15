@@ -146,6 +146,7 @@
 			compatible = "arm,cortex-a53";
 			reg = <0x000>;
 			enable-method = "psci";
+			next-level-cache = <&L2_0>;
 			cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
 			clocks = <&infracfg CLK_INFRA_CA53SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
@@ -158,6 +159,7 @@
 			compatible = "arm,cortex-a53";
 			reg = <0x001>;
 			enable-method = "psci";
+			next-level-cache = <&L2_0>;
 			cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;
 			clocks = <&infracfg CLK_INFRA_CA53SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
@@ -170,6 +172,7 @@
 			compatible = "arm,cortex-a57";
 			reg = <0x100>;
 			enable-method = "psci";
+			next-level-cache = <&L2_1>;
 			cpu-idle-states = <&CPU_SLEEP_1 &CLUSTER_SLEEP_1>;
 			clocks = <&infracfg CLK_INFRA_CA57SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
@@ -182,11 +185,20 @@
 			compatible = "arm,cortex-a57";
 			reg = <0x101>;
 			enable-method = "psci";
+			next-level-cache = <&L2_1>;
 			cpu-idle-states = <&CPU_SLEEP_1 &CLUSTER_SLEEP_1>;
 			clocks = <&infracfg CLK_INFRA_CA57SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			lock-names = "cpu", "intermediate";
 			operating-points-v2 = <&cluster1_opp>;
+		};
+
+		L2_0: l2-cache0 {
+			compatible = "cache";
+		};
+
+		L2_1: l2-cache1 {
+			compatible = "cache";
 		};
 
 		idle-states {
