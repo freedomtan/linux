@@ -15,6 +15,7 @@
 
 #include <linux/arm-smccc.h>
 #include <linux/cpuidle.h>
+#include <linux/cpu_domains.h>
 #include <linux/errno.h>
 #include <linux/linkage.h>
 #include <linux/of.h>
@@ -54,6 +55,24 @@
 static int resident_cpu = -1;
 static bool psci_has_osi_pd;
 static bool psci_suspend_mode_is_osi;
+static DEFINE_PER_CPU(u32, cluster_state_id);
+
+static inline u32 psci_get_composite_state_id(u32 cpu_state)
+{
+	return cpu_state | this_cpu_read(cluster_state_id);
+}
+
+static inline void psci_reset_composite_state_id(void)
+{
+	this_cpu_write(cluster_state_id, 0);
+}
+
+static int psci_pd_power_off(u32 state_idx, u32 param,
+		const struct cpumask *mask)
+{
+	__this_cpu_add(cluster_state_id, param);
+	return 0;
+}
 
 bool psci_tos_resident_on(int cpu)
 {
@@ -180,6 +199,8 @@ static int psci_cpu_on(unsigned long cpuid, unsigned long entry_point)
 
 	fn = psci_function_id[PSCI_FN_CPU_ON];
 	err = invoke_psci_fn(fn, cpuid, entry_point, 0);
+	/* Reset CPU cluster states */
+	psci_reset_composite_state_id();
 	return psci_to_linux_errno(err);
 }
 
@@ -325,6 +346,20 @@ static int psci_dt_cpu_init_idle(struct device_node *cpu_node, int cpu)
 	}
 	/* Idle states parsed correctly, initialize per-cpu pointer */
 	per_cpu(psci_power_state, cpu) = psci_states;
+
+	if (psci_has_osi_pd) {
+		int ret;
+		const struct cpu_pd_ops psci_pd_ops = {
+			.power_off = psci_pd_power_off,
+		};
+
+		ret = of_setup_cpu_pd_single(cpu, &psci_pd_ops);
+		if (!ret)
+			ret = psci_set_suspend_mode_osi(true);
+		if (ret)
+			pr_warn("CPU%d: Error setting PSCI OSI mode\n", cpu);
+	}
+
 	return 0;
 
 free_mem:
@@ -351,15 +386,17 @@ int psci_cpu_init_idle(unsigned int cpu)
 static int psci_suspend_finisher(unsigned long index)
 {
 	u32 *state = __this_cpu_read(psci_power_state);
+	u32 ext_state = psci_get_composite_state_id(state[index - 1]);
 
-	return psci_ops.cpu_suspend(state[index - 1],
-				    virt_to_phys(cpu_resume));
+	return psci_ops.cpu_suspend(ext_state, virt_to_phys(cpu_resume));
 }
 
 int psci_cpu_suspend_enter(unsigned long index)
 {
 	int ret;
 	u32 *state = __this_cpu_read(psci_power_state);
+	u32 ext_state = psci_get_composite_state_id(state[index - 1]);
+
 	/*
 	 * idle state index 0 corresponds to wfi, should never be called
 	 * from the cpu_suspend operations
@@ -368,9 +405,15 @@ int psci_cpu_suspend_enter(unsigned long index)
 		return -EINVAL;
 
 	if (!psci_power_state_loses_context(state[index - 1]))
-		ret = psci_ops.cpu_suspend(state[index - 1], 0);
+		ret = psci_ops.cpu_suspend(ext_state, 0);
 	else
 		ret = cpu_suspend(index, psci_suspend_finisher);
+
+	/*
+	 * Clear the CPU's cluster states, we start afresh after coming
+	 * out of idle.
+	 */
+	psci_reset_composite_state_id();
 
 	return ret;
 }
