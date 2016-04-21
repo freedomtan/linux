@@ -134,6 +134,7 @@
 			operating-points-v2 = <&cluster0_opp>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			power-domains = <&CPU_PD0>;
 		};
 
 		cpu1: cpu@1 {
@@ -146,6 +147,7 @@
 			operating-points-v2 = <&cluster0_opp>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			power-domains = <&CPU_PD0>;
 		};
 
 		cpu2: cpu@100 {
@@ -158,6 +160,7 @@
 			operating-points-v2 = <&cluster1_opp>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			power-domains = <&CPU_PD1>;
 		};
 
 		cpu3: cpu@101 {
@@ -170,6 +173,7 @@
 			operating-points-v2 = <&cluster1_opp>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			power-domains = <&CPU_PD1>;
 		};
 
 		idle-states {
@@ -178,13 +182,55 @@
 			CPU_SLEEP_0: cpu-sleep-0 {
 				compatible = "arm,idle-state";
 				local-timer-stop;
-				entry-latency-us = <639>;
-				exit-latency-us = <680>;
-				min-residency-us = <1088>;
-				arm,psci-suspend-param = <0x0010000>;
+				entry-latency-us = <72>;
+				exit-latency-us = <66>;
+				min-residency-us = <458>;
+				arm,psci-suspend-param = <0x40000002>;
 			};
 		};
 	};
+
+	CPU_PD0: cpu-pd@0 {
+		compatible = "arm,pd","arm,cortex-a53";
+		#power-domain-cells = <0>;
+		power-states = <&CLUSTER0_RET>;
+	};
+
+	CPU_PD1: cpu-pd@1 {
+		compatible = "arm,pd","arm,cortex-a57";
+		#power-domain-cells = <0>;
+		power-states = <&CLUSTER1_RET>;
+	};
+
+	pd-power-states {
+		CLUSTER0_RET: power-state1@1 {
+			state-param = <0x40000022>;
+			entry-latency-us = <145>;
+			exit-latency-us = <60>;
+			residency-us = <331>;
+		};
+
+		CLUSTER0_PWR_DWN: power-state1@2 {
+			state-param = <0x40000033>;
+			entry-latency-us = <300>;
+			exit-latency-us = <120>;
+			residency-us = <600>;
+		};
+
+		CLUSTER1_RET: power-state2@1 {
+			state-param = <0x40000022>;
+			entry-latency-us = <287>;
+			exit-latency-us = <62>;
+			residency-us = <1423>;
+		};
+
+		CLUSTER1_PWR_DWN: power-state2@2 {
+			state-param = <0x40000033>;
+			entry-latency-us = <500>;
+			exit-latency-us = <150>;
+			residency-us = <600>;
+		};
+        };
 
 	psci {
 		compatible = "arm,psci-1.0", "arm,psci-0.2", "arm,psci";
