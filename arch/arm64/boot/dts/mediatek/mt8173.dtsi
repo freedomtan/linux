@@ -218,7 +218,7 @@
 				entry-latency-us = <72>;
 				exit-latency-us = <66>;
 				min-residency-us = <458>;
-				arm,psci-suspend-param = <0x0010000>;
+				arm,psci-suspend-param = <0x40000002>;
 			};
 
 			CLUSTER_SLEEP_0: cluster-sleep-0 {
@@ -227,7 +227,7 @@
 				entry-latency-us = <145>;
 				exit-latency-us = <60>;
 				min-residency-us = <331>;
-				arm,psci-suspend-param = <0x1010000>;
+				arm,psci-suspend-param = <0x40000022>;
 			};
 
 			CPU_SLEEP_1: cpu-sleep-1 {
@@ -236,7 +236,7 @@
 				entry-latency-us = <72>;
 				exit-latency-us = <66>;
 				min-residency-us = <516>;
-				arm,psci-suspend-param = <0x0010000>;
+				arm,psci-suspend-param = <0x40000002>;
 			};
 
 			CLUSTER_SLEEP_1: cluster-sleep-1 {
@@ -245,7 +245,7 @@
 				entry-latency-us = <287>;
 				exit-latency-us = <62>;
 				min-residency-us = <1423>;
-				arm,psci-suspend-param = <0x1010000>;
+				arm,psci-suspend-param = <0x40000022>;
 			};
 		};
 	};
