@@ -210,7 +210,7 @@
 				entry-latency-us = <72>;
 				exit-latency-us = <66>;
 				min-residency-us = <458>;
-				arm,psci-suspend-param = <0x0010000>;
+				arm,psci-suspend-param = <0x40000002>;
 			};
 
 			CLUSTER_SLEEP_0: cluster-sleep-0 {
@@ -219,7 +219,7 @@
 				entry-latency-us = <145>;
 				exit-latency-us = <60>;
 				min-residency-us = <331>;
-				arm,psci-suspend-param = <0x1010000>;
+				arm,psci-suspend-param = <0x40000022>;
 			};
 
 			CPU_SLEEP_1: cpu-sleep-1 {
@@ -228,7 +228,7 @@
 				entry-latency-us = <72>;
 				exit-latency-us = <66>;
 				min-residency-us = <516>;
-				arm,psci-suspend-param = <0x0010000>;
+				arm,psci-suspend-param = <0x40000002>;
 			};
 
 			CLUSTER_SLEEP_1: cluster-sleep-1 {
@@ -237,7 +237,7 @@
 				entry-latency-us = <287>;
 				exit-latency-us = <62>;
 				min-residency-us = <1423>;
-				arm,psci-suspend-param = <0x1010000>;
+				arm,psci-suspend-param = <0x40000022>;
 			};
 		};
 	};
@@ -493,6 +493,14 @@
 			clocks = <&topckgen CLK_TOP_SCP_SEL>;
 			clock-names = "main";
 			memory-region = <&vpu_dma_reserved>;
+		};
+
+		cec: cec@10013000 {
+			compatible = "mediatek,mt8173-cec";
+			reg = <0 0x10013000 0 0xbc>;
+			interrupts = <GIC_SPI 167 IRQ_TYPE_LEVEL_LOW>;
+			clocks = <&infracfg CLK_INFRA_CEC>;
+			status = "disabled";
 		};
 
 		sysirq: intpol-controller@10200620 {
