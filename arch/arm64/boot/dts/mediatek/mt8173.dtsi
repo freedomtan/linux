@@ -190,18 +190,18 @@
 			CPU_SLEEP_0: cpu-sleep-0 {
 				compatible = "arm,idle-state";
 				local-timer-stop;
-				entry-latency-us = <639>;
-				exit-latency-us = <680>;
-				min-residency-us = <1088>;
+				entry-latency-us = <100>;
+				exit-latency-us = <80>;
+				min-residency-us = <2000>;
 				arm,psci-suspend-param = <0x0010000>;
 			};
 
 			CLUSTER_SLEEP_0: cluster-sleep-0 {
 				compatible = "arm,idle-state";
 				local-timer-stop;
-				entry-latency-us = <800>;
-				exit-latency-us = <1000>;
-				min-residency-us = <2000>;
+				entry-latency-us = <350>;
+				exit-latency-us = <80>;
+				min-residency-us = <3000>;
 				arm,psci-suspend-param = <0x1010000>;
 			};
 		};
@@ -392,6 +392,14 @@
 			reset-names = "pwrap";
 			clocks = <&infracfg CLK_INFRA_PMICSPI>, <&infracfg CLK_INFRA_PMICWRAP>;
 			clock-names = "spi", "wrap";
+		};
+
+		cec: cec@10013000 {
+			compatible = "mediatek,mt8173-cec";
+			reg = <0 0x10013000 0 0xbc>;
+			interrupts = <GIC_SPI 167 IRQ_TYPE_LEVEL_LOW>;
+			clocks = <&infracfg CLK_INFRA_CEC>;
+			status = "disabled";
 		};
 
 		sysirq: intpol-controller@10200620 {
