@@ -739,21 +739,6 @@ static int pm_genpd_prepare(struct device *dev)
 
 	mutex_unlock(&genpd->lock);
 
-	/*
-	 * Even if the PM domain is powered off at this point, we can't expect
-	 * it to remain in that state during the entire system PM suspend
-	 * phase. Any subsystem/driver for a device in the PM domain, may still
-	 * need to serve a request which may require the device to be runtime
-	 * resumed and its PM domain to be powered.
-	 *
-	 * As we are disabling runtime PM at this point, we are preventing the
-	 * subsystem/driver to decide themselves. For that reason, we need to
-	 * make sure the device is operational as it may be required in some
-	 * cases.
-	 */
-	pm_runtime_resume(dev);
-	__pm_runtime_disable(dev, false);
-
 	ret = pm_generic_prepare(dev);
 	if (ret) {
 		mutex_lock(&genpd->lock);
@@ -761,7 +746,6 @@ static int pm_genpd_prepare(struct device *dev)
 		genpd->prepared_count--;
 
 		mutex_unlock(&genpd->lock);
-		pm_runtime_enable(dev);
 	}
 
 	return ret;
@@ -777,6 +761,7 @@ static int pm_genpd_prepare(struct device *dev)
 static int pm_genpd_suspend_noirq(struct device *dev)
 {
 	struct generic_pm_domain *genpd;
+	int ret;
 
 	dev_dbg(dev, "%s()\n", __func__);
 
@@ -787,7 +772,11 @@ static int pm_genpd_suspend_noirq(struct device *dev)
 	if (dev->power.wakeup_path && genpd_dev_active_wakeup(genpd, dev))
 		return 0;
 
-	genpd_stop_dev(genpd, dev);
+	if (genpd->dev_ops.stop && genpd->dev_ops.start) {
+		ret = pm_runtime_force_suspend(dev);
+		if (ret)
+			return ret;
+	}
 
 	/*
 	 * Since all of the "noirq" callbacks are executed sequentially, it is
@@ -809,6 +798,7 @@ static int pm_genpd_suspend_noirq(struct device *dev)
 static int pm_genpd_resume_noirq(struct device *dev)
 {
 	struct generic_pm_domain *genpd;
+	int ret = 0;
 
 	dev_dbg(dev, "%s()\n", __func__);
 
@@ -827,7 +817,10 @@ static int pm_genpd_resume_noirq(struct device *dev)
 	pm_genpd_sync_poweron(genpd, true);
 	genpd->suspended_count--;
 
-	return genpd_start_dev(genpd, dev);
+	if (genpd->dev_ops.stop && genpd->dev_ops.start)
+		ret = pm_runtime_force_resume(dev);
+
+	return ret;
 }
 
 /**
@@ -842,6 +835,7 @@ static int pm_genpd_resume_noirq(struct device *dev)
 static int pm_genpd_freeze_noirq(struct device *dev)
 {
 	struct generic_pm_domain *genpd;
+	int ret = 0;
 
 	dev_dbg(dev, "%s()\n", __func__);
 
@@ -849,7 +843,10 @@ static int pm_genpd_freeze_noirq(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	return genpd_stop_dev(genpd, dev);
+	if (genpd->dev_ops.stop && genpd->dev_ops.start)
+		ret = pm_runtime_force_suspend(dev);
+
+	return ret;
 }
 
 /**
@@ -862,6 +859,7 @@ static int pm_genpd_freeze_noirq(struct device *dev)
 static int pm_genpd_thaw_noirq(struct device *dev)
 {
 	struct generic_pm_domain *genpd;
+	int ret = 0;
 
 	dev_dbg(dev, "%s()\n", __func__);
 
@@ -869,7 +867,10 @@ static int pm_genpd_thaw_noirq(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	return genpd_start_dev(genpd, dev);
+	if (genpd->dev_ops.stop && genpd->dev_ops.start)
+		ret = pm_runtime_force_resume(dev);
+
+	return ret;
 }
 
 /**
@@ -882,6 +883,7 @@ static int pm_genpd_thaw_noirq(struct device *dev)
 static int pm_genpd_restore_noirq(struct device *dev)
 {
 	struct generic_pm_domain *genpd;
+	int ret = 0;
 
 	dev_dbg(dev, "%s()\n", __func__);
 
@@ -907,7 +909,10 @@ static int pm_genpd_restore_noirq(struct device *dev)
 
 	pm_genpd_sync_poweron(genpd, true);
 
-	return genpd_start_dev(genpd, dev);
+	if (genpd->dev_ops.stop && genpd->dev_ops.start)
+		ret = pm_runtime_force_resume(dev);
+
+	return ret;
 }
 
 /**
@@ -929,15 +934,15 @@ static void pm_genpd_complete(struct device *dev)
 	if (IS_ERR(genpd))
 		return;
 
+	pm_generic_complete(dev);
+
 	mutex_lock(&genpd->lock);
 
 	genpd->prepared_count--;
+	if (!genpd->prepared_count)
+		genpd_queue_power_off_work(genpd);
 
 	mutex_unlock(&genpd->lock);
-
-	pm_generic_complete(dev);
-	pm_runtime_set_active(dev);
-	pm_runtime_enable(dev);
 }
 
 /**
