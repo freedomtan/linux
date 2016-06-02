@@ -232,7 +232,8 @@
 
 	pd-power-states {
 		CLUSTER0_RET: power-state1@1 {
-			state-param = <0x40000022>;
+			// state-param = <0x40000022>;
+			state-param = <0x00000020>;
 			entry-latency-us = <350>;
 			exit-latency-us = <80>;
 			residency-us = <3000>;
@@ -246,7 +247,8 @@
 		};
 
 		CLUSTER1_RET: power-state2@1 {
-			state-param = <0x40000022>;
+			// state-param = <0x40000022>;
+			state-param = <0x00000020>;
 			entry-latency-us = <350>;
 			exit-latency-us = <80>;
 			residency-us = <3000>;
