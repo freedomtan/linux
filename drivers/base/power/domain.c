@@ -39,6 +39,94 @@
 static LIST_HEAD(gpd_list);
 static DEFINE_MUTEX(gpd_list_lock);
 
+struct genpd_lock_fns {
+	void (*lock)(struct generic_pm_domain *genpd);
+	void (*lock_nested)(struct generic_pm_domain *genpd, int depth);
+	int (*lock_interruptible)(struct generic_pm_domain *genpd);
+	void (*unlock)(struct generic_pm_domain *genpd);
+};
+
+static void genpd_lock_mtx(struct generic_pm_domain *genpd)
+{
+	mutex_lock(&genpd->mlock);
+}
+
+static void genpd_lock_nested_mtx(struct generic_pm_domain *genpd,
+					int depth)
+{
+	mutex_lock_nested(&genpd->mlock, depth);
+}
+
+static int genpd_lock_interruptible_mtx(struct generic_pm_domain *genpd)
+{
+	return mutex_lock_interruptible(&genpd->mlock);
+}
+
+static void genpd_unlock_mtx(struct generic_pm_domain *genpd)
+{
+	return mutex_unlock(&genpd->mlock);
+}
+
+static const struct genpd_lock_fns genpd_mtx_fns  = {
+	.lock = genpd_lock_mtx,
+	.lock_nested = genpd_lock_nested_mtx,
+	.lock_interruptible = genpd_lock_interruptible_mtx,
+	.unlock = genpd_unlock_mtx,
+};
+
+static void genpd_lock_spin(struct generic_pm_domain *genpd)
+	__acquires(&genpd->slock)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&genpd->slock, flags);
+	genpd->lock_flags = flags;
+}
+
+static void genpd_lock_nested_spin(struct generic_pm_domain *genpd,
+					int depth)
+	__acquires(&genpd->slock)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave_nested(&genpd->slock, flags, depth);
+	genpd->lock_flags = flags;
+}
+
+static int genpd_lock_interruptible_spin(struct generic_pm_domain *genpd)
+	__acquires(&genpd->slock)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&genpd->slock, flags);
+	genpd->lock_flags = flags;
+	return 0;
+}
+
+static void genpd_unlock_spin(struct generic_pm_domain *genpd)
+	__releases(&genpd->slock)
+{
+	spin_unlock_irqrestore(&genpd->slock, genpd->lock_flags);
+}
+
+static const struct genpd_lock_fns genpd_spin_fns = {
+	.lock = genpd_lock_spin,
+	.lock_nested = genpd_lock_nested_spin,
+	.lock_interruptible = genpd_lock_interruptible_spin,
+	.unlock = genpd_unlock_spin,
+};
+
+#define genpd_lock(p)			p->lock_fns->lock(p)
+#define genpd_lock_nested(p, d)		p->lock_fns->lock_nested(p, d)
+#define genpd_lock_interruptible(p)	p->lock_fns->lock_interruptible(p)
+#define genpd_unlock(p)			p->lock_fns->unlock(p)
+
+static inline bool irq_safe_dev_in_no_sleep_domain(struct device *dev,
+		struct generic_pm_domain *genpd)
+{
+	return dev->power.irq_safe && !genpd->irq_safe;
+}
+
 /*
  * Get the generic PM domain for a particular struct device.
  * This validates the struct device pointer, the PM domain pointer,
@@ -187,8 +275,7 @@ static int genpd_poweron(struct generic_pm_domain *genpd, unsigned int depth)
 	struct gpd_link *link;
 	int ret = 0;
 
-	if (genpd->status == GPD_STATE_ACTIVE
-	    || (genpd->prepared_count > 0 && genpd->suspend_power_off))
+	if (genpd->status == GPD_STATE_ACTIVE)
 		return 0;
 
 	/*
@@ -201,9 +288,9 @@ static int genpd_poweron(struct generic_pm_domain *genpd, unsigned int depth)
 
 		genpd_sd_counter_inc(master);
 
-		mutex_lock_nested(&master->lock, depth + 1);
+		genpd_lock_nested(master, depth + 1);
 		ret = genpd_poweron(master, depth + 1);
-		mutex_unlock(&master->lock);
+		genpd_unlock(master);
 
 		if (ret) {
 			genpd_sd_counter_dec(master);
@@ -256,9 +343,9 @@ static int genpd_dev_pm_qos_notifier(struct notifier_block *nb,
 		spin_unlock_irq(&dev->power.lock);
 
 		if (!IS_ERR(genpd)) {
-			mutex_lock(&genpd->lock);
+			genpd_lock(genpd);
 			genpd->max_off_time_changed = true;
-			mutex_unlock(&genpd->lock);
+			genpd_unlock(genpd);
 		}
 
 		dev = dev->parent;
@@ -304,8 +391,17 @@ static int genpd_poweroff(struct generic_pm_domain *genpd, bool is_async)
 		if (stat > PM_QOS_FLAGS_NONE)
 			return -EBUSY;
 
-		if (!pm_runtime_suspended(pdd->dev) || pdd->dev->power.irq_safe)
+		/*
+		 * We do not want to power off the domain if the device is
+		 * not suspended or an IRQ safe device is part of this
+		 * non-IRQ safe domain.
+		 */
+		if (!pm_runtime_suspended(pdd->dev) ||
+			irq_safe_dev_in_no_sleep_domain(pdd->dev, genpd))
 			not_suspended++;
+		WARN_ONCE(irq_safe_dev_in_no_sleep_domain(pdd->dev, genpd),
+				"PM domain %s will not be powered off\n",
+				genpd->name);
 	}
 
 	if (not_suspended > 1 || (not_suspended == 1 && is_async))
@@ -355,9 +451,9 @@ static void genpd_power_off_work_fn(struct work_struct *work)
 
 	genpd = container_of(work, struct generic_pm_domain, power_off_work);
 
-	mutex_lock(&genpd->lock);
+	genpd_lock(genpd);
 	genpd_poweroff(genpd, true);
-	mutex_unlock(&genpd->lock);
+	genpd_unlock(genpd);
 }
 
 /**
@@ -467,15 +563,18 @@ static int genpd_runtime_suspend(struct device *dev)
 	}
 
 	/*
-	 * If power.irq_safe is set, this routine will be run with interrupts
-	 * off, so it can't use mutexes.
+	 * If power.irq_safe is set, this routine may be run with
+	 * IRQ disabled, so suspend only if the power domain is
+	 * irq_safe.
 	 */
-	if (dev->power.irq_safe)
+	WARN_ONCE(irq_safe_dev_in_no_sleep_domain(dev, genpd),
+			"genpd %s will not be powered off\n", genpd->name);
+	if (irq_safe_dev_in_no_sleep_domain(dev, genpd))
 		return 0;
 
-	mutex_lock(&genpd->lock);
+	genpd_lock(genpd);
 	genpd_poweroff(genpd, false);
-	mutex_unlock(&genpd->lock);
+	genpd_unlock(genpd);
 
 	return 0;
 }
@@ -504,15 +603,18 @@ static int genpd_runtime_resume(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	/* If power.irq_safe, the PM domain is never powered off. */
-	if (dev->power.irq_safe) {
+	/*
+	 * As we don't power off a non IRQ safe domain, which holds
+	 * an IRQ safe device, we don't need to restore power to it.
+	 */
+	if (dev->power.irq_safe && !genpd->irq_safe) {
 		timed = false;
 		goto out;
 	}
 
-	mutex_lock(&genpd->lock);
+	genpd_lock(genpd);
 	ret = genpd_poweron(genpd, 0);
-	mutex_unlock(&genpd->lock);
+	genpd_unlock(genpd);
 
 	if (ret)
 		return ret;
@@ -547,10 +649,11 @@ static int genpd_runtime_resume(struct device *dev)
 err_stop:
 	genpd_stop_dev(genpd, dev);
 err_poweroff:
-	if (!dev->power.irq_safe) {
-		mutex_lock(&genpd->lock);
+	if (!dev->power.irq_safe ||
+			irq_safe_dev_in_no_sleep_domain(dev, genpd)) {
+		genpd_lock(genpd);
 		genpd_poweroff(genpd, 0);
-		mutex_unlock(&genpd->lock);
+		genpd_unlock(genpd);
 	}
 
 	return ret;
@@ -733,81 +836,23 @@ static int pm_genpd_prepare(struct device *dev)
 	if (resume_needed(dev, genpd))
 		pm_runtime_resume(dev);
 
-	mutex_lock(&genpd->lock);
+	genpd_lock(genpd);
 
-	if (genpd->prepared_count++ == 0) {
+	if (genpd->prepared_count++ == 0)
 		genpd->suspended_count = 0;
-		genpd->suspend_power_off = genpd->status == GPD_STATE_POWER_OFF;
-	}
 
-	mutex_unlock(&genpd->lock);
-
-	if (genpd->suspend_power_off)
-		return 0;
-
-	/*
-	 * The PM domain must be in the GPD_STATE_ACTIVE state at this point,
-	 * so genpd_poweron() will return immediately, but if the device
-	 * is suspended (e.g. it's been stopped by genpd_stop_dev()), we need
-	 * to make it operational.
-	 */
-	pm_runtime_resume(dev);
-	__pm_runtime_disable(dev, false);
+	genpd_unlock(genpd);
 
 	ret = pm_generic_prepare(dev);
 	if (ret) {
-		mutex_lock(&genpd->lock);
+		genpd_lock(genpd);
 
-		if (--genpd->prepared_count == 0)
-			genpd->suspend_power_off = false;
+		genpd->prepared_count--;
 
-		mutex_unlock(&genpd->lock);
-		pm_runtime_enable(dev);
+		genpd_unlock(genpd);
 	}
 
 	return ret;
-}
-
-/**
- * pm_genpd_suspend - Suspend a device belonging to an I/O PM domain.
- * @dev: Device to suspend.
- *
- * Suspend a device under the assumption that its pm_domain field points to the
- * domain member of an object of type struct generic_pm_domain representing
- * a PM domain consisting of I/O devices.
- */
-static int pm_genpd_suspend(struct device *dev)
-{
-	struct generic_pm_domain *genpd;
-
-	dev_dbg(dev, "%s()\n", __func__);
-
-	genpd = dev_to_genpd(dev);
-	if (IS_ERR(genpd))
-		return -EINVAL;
-
-	return genpd->suspend_power_off ? 0 : pm_generic_suspend(dev);
-}
-
-/**
- * pm_genpd_suspend_late - Late suspend of a device from an I/O PM domain.
- * @dev: Device to suspend.
- *
- * Carry out a late suspend of a device under the assumption that its
- * pm_domain field points to the domain member of an object of type
- * struct generic_pm_domain representing a PM domain consisting of I/O devices.
- */
-static int pm_genpd_suspend_late(struct device *dev)
-{
-	struct generic_pm_domain *genpd;
-
-	dev_dbg(dev, "%s()\n", __func__);
-
-	genpd = dev_to_genpd(dev);
-	if (IS_ERR(genpd))
-		return -EINVAL;
-
-	return genpd->suspend_power_off ? 0 : pm_generic_suspend_late(dev);
 }
 
 /**
@@ -820,6 +865,7 @@ static int pm_genpd_suspend_late(struct device *dev)
 static int pm_genpd_suspend_noirq(struct device *dev)
 {
 	struct generic_pm_domain *genpd;
+	int ret;
 
 	dev_dbg(dev, "%s()\n", __func__);
 
@@ -827,11 +873,14 @@ static int pm_genpd_suspend_noirq(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	if (genpd->suspend_power_off
-	    || (dev->power.wakeup_path && genpd_dev_active_wakeup(genpd, dev)))
+	if (dev->power.wakeup_path && genpd_dev_active_wakeup(genpd, dev))
 		return 0;
 
-	genpd_stop_dev(genpd, dev);
+	if (genpd->dev_ops.stop && genpd->dev_ops.start) {
+		ret = pm_runtime_force_suspend(dev);
+		if (ret)
+			return ret;
+	}
 
 	/*
 	 * Since all of the "noirq" callbacks are executed sequentially, it is
@@ -853,6 +902,7 @@ static int pm_genpd_suspend_noirq(struct device *dev)
 static int pm_genpd_resume_noirq(struct device *dev)
 {
 	struct generic_pm_domain *genpd;
+	int ret = 0;
 
 	dev_dbg(dev, "%s()\n", __func__);
 
@@ -860,8 +910,7 @@ static int pm_genpd_resume_noirq(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	if (genpd->suspend_power_off
-	    || (dev->power.wakeup_path && genpd_dev_active_wakeup(genpd, dev)))
+	if (dev->power.wakeup_path && genpd_dev_active_wakeup(genpd, dev))
 		return 0;
 
 	/*
@@ -872,93 +921,10 @@ static int pm_genpd_resume_noirq(struct device *dev)
 	pm_genpd_sync_poweron(genpd, true);
 	genpd->suspended_count--;
 
-	return genpd_start_dev(genpd, dev);
-}
+	if (genpd->dev_ops.stop && genpd->dev_ops.start)
+		ret = pm_runtime_force_resume(dev);
 
-/**
- * pm_genpd_resume_early - Early resume of a device in an I/O PM domain.
- * @dev: Device to resume.
- *
- * Carry out an early resume of a device under the assumption that its
- * pm_domain field points to the domain member of an object of type
- * struct generic_pm_domain representing a power domain consisting of I/O
- * devices.
- */
-static int pm_genpd_resume_early(struct device *dev)
-{
-	struct generic_pm_domain *genpd;
-
-	dev_dbg(dev, "%s()\n", __func__);
-
-	genpd = dev_to_genpd(dev);
-	if (IS_ERR(genpd))
-		return -EINVAL;
-
-	return genpd->suspend_power_off ? 0 : pm_generic_resume_early(dev);
-}
-
-/**
- * pm_genpd_resume - Resume of device in an I/O PM domain.
- * @dev: Device to resume.
- *
- * Resume a device under the assumption that its pm_domain field points to the
- * domain member of an object of type struct generic_pm_domain representing
- * a power domain consisting of I/O devices.
- */
-static int pm_genpd_resume(struct device *dev)
-{
-	struct generic_pm_domain *genpd;
-
-	dev_dbg(dev, "%s()\n", __func__);
-
-	genpd = dev_to_genpd(dev);
-	if (IS_ERR(genpd))
-		return -EINVAL;
-
-	return genpd->suspend_power_off ? 0 : pm_generic_resume(dev);
-}
-
-/**
- * pm_genpd_freeze - Freezing a device in an I/O PM domain.
- * @dev: Device to freeze.
- *
- * Freeze a device under the assumption that its pm_domain field points to the
- * domain member of an object of type struct generic_pm_domain representing
- * a power domain consisting of I/O devices.
- */
-static int pm_genpd_freeze(struct device *dev)
-{
-	struct generic_pm_domain *genpd;
-
-	dev_dbg(dev, "%s()\n", __func__);
-
-	genpd = dev_to_genpd(dev);
-	if (IS_ERR(genpd))
-		return -EINVAL;
-
-	return genpd->suspend_power_off ? 0 : pm_generic_freeze(dev);
-}
-
-/**
- * pm_genpd_freeze_late - Late freeze of a device in an I/O PM domain.
- * @dev: Device to freeze.
- *
- * Carry out a late freeze of a device under the assumption that its
- * pm_domain field points to the domain member of an object of type
- * struct generic_pm_domain representing a power domain consisting of I/O
- * devices.
- */
-static int pm_genpd_freeze_late(struct device *dev)
-{
-	struct generic_pm_domain *genpd;
-
-	dev_dbg(dev, "%s()\n", __func__);
-
-	genpd = dev_to_genpd(dev);
-	if (IS_ERR(genpd))
-		return -EINVAL;
-
-	return genpd->suspend_power_off ? 0 : pm_generic_freeze_late(dev);
+	return ret;
 }
 
 /**
@@ -973,6 +939,7 @@ static int pm_genpd_freeze_late(struct device *dev)
 static int pm_genpd_freeze_noirq(struct device *dev)
 {
 	struct generic_pm_domain *genpd;
+	int ret = 0;
 
 	dev_dbg(dev, "%s()\n", __func__);
 
@@ -980,7 +947,10 @@ static int pm_genpd_freeze_noirq(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	return genpd->suspend_power_off ? 0 : genpd_stop_dev(genpd, dev);
+	if (genpd->dev_ops.stop && genpd->dev_ops.start)
+		ret = pm_runtime_force_suspend(dev);
+
+	return ret;
 }
 
 /**
@@ -993,6 +963,7 @@ static int pm_genpd_freeze_noirq(struct device *dev)
 static int pm_genpd_thaw_noirq(struct device *dev)
 {
 	struct generic_pm_domain *genpd;
+	int ret = 0;
 
 	dev_dbg(dev, "%s()\n", __func__);
 
@@ -1000,51 +971,10 @@ static int pm_genpd_thaw_noirq(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	return genpd->suspend_power_off ?
-		0 : genpd_start_dev(genpd, dev);
-}
+	if (genpd->dev_ops.stop && genpd->dev_ops.start)
+		ret = pm_runtime_force_resume(dev);
 
-/**
- * pm_genpd_thaw_early - Early thaw of device in an I/O PM domain.
- * @dev: Device to thaw.
- *
- * Carry out an early thaw of a device under the assumption that its
- * pm_domain field points to the domain member of an object of type
- * struct generic_pm_domain representing a power domain consisting of I/O
- * devices.
- */
-static int pm_genpd_thaw_early(struct device *dev)
-{
-	struct generic_pm_domain *genpd;
-
-	dev_dbg(dev, "%s()\n", __func__);
-
-	genpd = dev_to_genpd(dev);
-	if (IS_ERR(genpd))
-		return -EINVAL;
-
-	return genpd->suspend_power_off ? 0 : pm_generic_thaw_early(dev);
-}
-
-/**
- * pm_genpd_thaw - Thaw a device belonging to an I/O power domain.
- * @dev: Device to thaw.
- *
- * Thaw a device under the assumption that its pm_domain field points to the
- * domain member of an object of type struct generic_pm_domain representing
- * a power domain consisting of I/O devices.
- */
-static int pm_genpd_thaw(struct device *dev)
-{
-	struct generic_pm_domain *genpd;
-
-	dev_dbg(dev, "%s()\n", __func__);
-
-	genpd = dev_to_genpd(dev);
-	if (IS_ERR(genpd))
-		return -EINVAL;
-
-	return genpd->suspend_power_off ? 0 : pm_generic_thaw(dev);
+	return ret;
 }
 
 /**
@@ -1057,6 +987,7 @@ static int pm_genpd_thaw(struct device *dev)
 static int pm_genpd_restore_noirq(struct device *dev)
 {
 	struct generic_pm_domain *genpd;
+	int ret = 0;
 
 	dev_dbg(dev, "%s()\n", __func__);
 
@@ -1072,30 +1003,20 @@ static int pm_genpd_restore_noirq(struct device *dev)
 	 * At this point suspended_count == 0 means we are being run for the
 	 * first time for the given domain in the present cycle.
 	 */
-	if (genpd->suspended_count++ == 0) {
+	if (genpd->suspended_count++ == 0)
 		/*
 		 * The boot kernel might put the domain into arbitrary state,
 		 * so make it appear as powered off to pm_genpd_sync_poweron(),
 		 * so that it tries to power it on in case it was really off.
 		 */
 		genpd->status = GPD_STATE_POWER_OFF;
-		if (genpd->suspend_power_off) {
-			/*
-			 * If the domain was off before the hibernation, make
-			 * sure it will be off going forward.
-			 */
-			genpd_power_off(genpd, true);
-
-			return 0;
-		}
-	}
-
-	if (genpd->suspend_power_off)
-		return 0;
 
 	pm_genpd_sync_poweron(genpd, true);
 
-	return genpd_start_dev(genpd, dev);
+	if (genpd->dev_ops.stop && genpd->dev_ops.start)
+		ret = pm_runtime_force_resume(dev);
+
+	return ret;
 }
 
 /**
@@ -1110,7 +1031,6 @@ static int pm_genpd_restore_noirq(struct device *dev)
 static void pm_genpd_complete(struct device *dev)
 {
 	struct generic_pm_domain *genpd;
-	bool run_complete;
 
 	dev_dbg(dev, "%s()\n", __func__);
 
@@ -1118,20 +1038,15 @@ static void pm_genpd_complete(struct device *dev)
 	if (IS_ERR(genpd))
 		return;
 
-	mutex_lock(&genpd->lock);
+	pm_generic_complete(dev);
 
-	run_complete = !genpd->suspend_power_off;
-	if (--genpd->prepared_count == 0)
-		genpd->suspend_power_off = false;
+	genpd_lock(genpd);
 
-	mutex_unlock(&genpd->lock);
+	genpd->prepared_count--;
+	if (!genpd->prepared_count)
+		genpd_queue_power_off_work(genpd);
 
-	if (run_complete) {
-		pm_generic_complete(dev);
-		pm_runtime_set_active(dev);
-		pm_runtime_enable(dev);
-		pm_request_idle(dev);
-	}
+	genpd_unlock(genpd);
 }
 
 /**
@@ -1173,18 +1088,10 @@ EXPORT_SYMBOL_GPL(pm_genpd_syscore_poweron);
 #else /* !CONFIG_PM_SLEEP */
 
 #define pm_genpd_prepare		NULL
-#define pm_genpd_suspend		NULL
-#define pm_genpd_suspend_late		NULL
 #define pm_genpd_suspend_noirq		NULL
-#define pm_genpd_resume_early		NULL
 #define pm_genpd_resume_noirq		NULL
-#define pm_genpd_resume			NULL
-#define pm_genpd_freeze			NULL
-#define pm_genpd_freeze_late		NULL
 #define pm_genpd_freeze_noirq		NULL
-#define pm_genpd_thaw_early		NULL
 #define pm_genpd_thaw_noirq		NULL
-#define pm_genpd_thaw			NULL
 #define pm_genpd_restore_noirq		NULL
 #define pm_genpd_complete		NULL
 
@@ -1274,7 +1181,7 @@ int __pm_genpd_add_device(struct generic_pm_domain *genpd, struct device *dev,
 	if (IS_ERR(gpd_data))
 		return PTR_ERR(gpd_data);
 
-	mutex_lock(&genpd->lock);
+	genpd_lock(genpd);
 
 	if (genpd->prepared_count > 0) {
 		ret = -EAGAIN;
@@ -1291,7 +1198,7 @@ int __pm_genpd_add_device(struct generic_pm_domain *genpd, struct device *dev,
 	list_add_tail(&gpd_data->base.list_node, &genpd->dev_list);
 
  out:
-	mutex_unlock(&genpd->lock);
+	genpd_unlock(genpd);
 
 	if (ret)
 		genpd_free_dev_data(dev, gpd_data);
@@ -1324,7 +1231,7 @@ int pm_genpd_remove_device(struct generic_pm_domain *genpd,
 	gpd_data = to_gpd_data(pdd);
 	dev_pm_qos_remove_notifier(dev, &gpd_data->nb);
 
-	mutex_lock(&genpd->lock);
+	genpd_lock(genpd);
 
 	if (genpd->prepared_count > 0) {
 		ret = -EAGAIN;
@@ -1339,14 +1246,14 @@ int pm_genpd_remove_device(struct generic_pm_domain *genpd,
 
 	list_del_init(&pdd->list_node);
 
-	mutex_unlock(&genpd->lock);
+	genpd_unlock(genpd);
 
 	genpd_free_dev_data(dev, gpd_data);
 
 	return 0;
 
  out:
-	mutex_unlock(&genpd->lock);
+	genpd_unlock(genpd);
 	dev_pm_qos_add_notifier(dev, &gpd_data->nb);
 
 	return ret;
@@ -1368,12 +1275,23 @@ int pm_genpd_add_subdomain(struct generic_pm_domain *genpd,
 	    || genpd == subdomain)
 		return -EINVAL;
 
+	/*
+	 * If the domain can be powered on/off in an IRQ safe
+	 * context, ensure that the subdomain can also be
+	 * powered on/off in that context.
+	 */
+	if (!genpd->irq_safe && subdomain->irq_safe) {
+		WARN("Parent %s of subdomain %s must be IRQ safe\n",
+				genpd->name, subdomain->name);
+		return -EINVAL;
+	}
+
 	link = kzalloc(sizeof(*link), GFP_KERNEL);
 	if (!link)
 		return -ENOMEM;
 
-	mutex_lock(&subdomain->lock);
-	mutex_lock_nested(&genpd->lock, SINGLE_DEPTH_NESTING);
+	genpd_lock(subdomain);
+	genpd_lock_nested(genpd, SINGLE_DEPTH_NESTING);
 
 	if (genpd->status == GPD_STATE_POWER_OFF
 	    &&  subdomain->status != GPD_STATE_POWER_OFF) {
@@ -1396,8 +1314,8 @@ int pm_genpd_add_subdomain(struct generic_pm_domain *genpd,
 		genpd_sd_counter_inc(genpd);
 
  out:
-	mutex_unlock(&genpd->lock);
-	mutex_unlock(&subdomain->lock);
+	genpd_unlock(genpd);
+	genpd_unlock(subdomain);
 	if (ret)
 		kfree(link);
 	return ret;
@@ -1418,8 +1336,8 @@ int pm_genpd_remove_subdomain(struct generic_pm_domain *genpd,
 	if (IS_ERR_OR_NULL(genpd) || IS_ERR_OR_NULL(subdomain))
 		return -EINVAL;
 
-	mutex_lock(&subdomain->lock);
-	mutex_lock_nested(&genpd->lock, SINGLE_DEPTH_NESTING);
+	genpd_lock(subdomain);
+	genpd_lock_nested(genpd, SINGLE_DEPTH_NESTING);
 
 	if (!list_empty(&subdomain->master_links) || subdomain->device_count) {
 		pr_warn("%s: unable to remove subdomain %s\n", genpd->name,
@@ -1443,12 +1361,25 @@ int pm_genpd_remove_subdomain(struct generic_pm_domain *genpd,
 	}
 
 out:
-	mutex_unlock(&genpd->lock);
-	mutex_unlock(&subdomain->lock);
+	genpd_unlock(genpd);
+	genpd_unlock(subdomain);
 
 	return ret;
 }
 EXPORT_SYMBOL_GPL(pm_genpd_remove_subdomain);
+
+static void genpd_lock_init(struct generic_pm_domain *genpd)
+{
+	if (genpd->flags & GENPD_FLAG_IRQ_SAFE) {
+		spin_lock_init(&genpd->slock);
+		genpd->irq_safe = true;
+		genpd->lock_fns = &genpd_spin_fns;
+	} else {
+		mutex_init(&genpd->mlock);
+		genpd->irq_safe = false;
+		genpd->lock_fns = &genpd_mtx_fns;
+	}
+}
 
 /**
  * pm_genpd_init - Initialize a generic I/O PM domain object.
@@ -1465,7 +1396,7 @@ void pm_genpd_init(struct generic_pm_domain *genpd,
 	INIT_LIST_HEAD(&genpd->master_links);
 	INIT_LIST_HEAD(&genpd->slave_links);
 	INIT_LIST_HEAD(&genpd->dev_list);
-	mutex_init(&genpd->lock);
+	genpd_lock_init(genpd);
 	genpd->gov = gov;
 	INIT_WORK(&genpd->power_off_work, genpd_power_off_work_fn);
 	atomic_set(&genpd->sd_count, 0);
@@ -1476,24 +1407,24 @@ void pm_genpd_init(struct generic_pm_domain *genpd,
 	genpd->domain.ops.runtime_suspend = genpd_runtime_suspend;
 	genpd->domain.ops.runtime_resume = genpd_runtime_resume;
 	genpd->domain.ops.prepare = pm_genpd_prepare;
-	genpd->domain.ops.suspend = pm_genpd_suspend;
-	genpd->domain.ops.suspend_late = pm_genpd_suspend_late;
+	genpd->domain.ops.suspend = pm_generic_suspend;
+	genpd->domain.ops.suspend_late = pm_generic_suspend_late;
 	genpd->domain.ops.suspend_noirq = pm_genpd_suspend_noirq;
 	genpd->domain.ops.resume_noirq = pm_genpd_resume_noirq;
-	genpd->domain.ops.resume_early = pm_genpd_resume_early;
-	genpd->domain.ops.resume = pm_genpd_resume;
-	genpd->domain.ops.freeze = pm_genpd_freeze;
-	genpd->domain.ops.freeze_late = pm_genpd_freeze_late;
+	genpd->domain.ops.resume_early = pm_generic_resume_early;
+	genpd->domain.ops.resume = pm_generic_resume;
+	genpd->domain.ops.freeze = pm_generic_freeze;
+	genpd->domain.ops.freeze_late = pm_generic_freeze_late;
 	genpd->domain.ops.freeze_noirq = pm_genpd_freeze_noirq;
 	genpd->domain.ops.thaw_noirq = pm_genpd_thaw_noirq;
-	genpd->domain.ops.thaw_early = pm_genpd_thaw_early;
-	genpd->domain.ops.thaw = pm_genpd_thaw;
-	genpd->domain.ops.poweroff = pm_genpd_suspend;
-	genpd->domain.ops.poweroff_late = pm_genpd_suspend_late;
+	genpd->domain.ops.thaw_early = pm_generic_thaw_early;
+	genpd->domain.ops.thaw = pm_generic_thaw;
+	genpd->domain.ops.poweroff = pm_generic_poweroff;
+	genpd->domain.ops.poweroff_late = pm_generic_poweroff_late;
 	genpd->domain.ops.poweroff_noirq = pm_genpd_suspend_noirq;
 	genpd->domain.ops.restore_noirq = pm_genpd_restore_noirq;
-	genpd->domain.ops.restore_early = pm_genpd_resume_early;
-	genpd->domain.ops.restore = pm_genpd_resume;
+	genpd->domain.ops.restore_early = pm_generic_restore_early;
+	genpd->domain.ops.restore = pm_generic_restore;
 	genpd->domain.ops.complete = pm_genpd_complete;
 
 	if (genpd->flags & GENPD_FLAG_PM_CLK) {
@@ -1522,6 +1453,95 @@ void pm_genpd_init(struct generic_pm_domain *genpd,
 EXPORT_SYMBOL_GPL(pm_genpd_init);
 
 #ifdef CONFIG_PM_GENERIC_DOMAINS_OF
+static int of_get_genpd_power_state(struct genpd_power_state *genpd_state,
+					   struct device_node *state_node)
+{
+	int err = 0;
+	u32 latency;
+	u32 residency;
+	u32 param;
+	u32 entry_latency, exit_latency;
+
+	err = of_property_read_u32(state_node, "entry-latency-us",
+				   &entry_latency);
+	if (err) {
+		pr_debug(" * %s missing entry-latency-us property\n",
+			 state_node->full_name);
+		return -EINVAL;
+	}
+
+	err = of_property_read_u32(state_node, "exit-latency-us",
+				   &exit_latency);
+	if (err) {
+		pr_debug(" * %s missing exit-latency-us property\n",
+			 state_node->full_name);
+		return -EINVAL;
+	}
+
+	err = of_property_read_u32(state_node, "residency-us", &residency);
+	if (!err)
+		genpd_state->residency_ns = 1000 * residency;
+
+	err = of_property_read_u32(state_node, "state-param", &param);
+	if (!err)
+		genpd_state->param = param;
+
+	latency = entry_latency + exit_latency;
+	genpd_state->power_on_latency_ns = 1000 * latency;
+	genpd_state->power_off_latency_ns = 1000 * entry_latency;
+
+	return 0;
+}
+
+static int of_genpd_device_parse_states(struct device_node *np,
+		struct generic_pm_domain *genpd)
+{
+	struct device_node *state_node;
+	int i, err = 0;
+
+	for (i = 0; i < GENPD_MAX_NUM_STATES; i++) {
+		state_node = of_parse_phandle(np, "power-states", i);
+		if (!state_node)
+			break;
+
+		err = of_get_genpd_power_state(&genpd->states[i], state_node);
+		if (err) {
+			pr_err
+			    ("Parsing idle state node %s failed with err %d\n",
+			     state_node->full_name, err);
+			err = -EINVAL;
+			break;
+		}
+		of_node_put(state_node);
+	}
+
+	if (err)
+		return err;
+
+	genpd->state_count = i;
+	return 0;
+}
+
+int of_pm_genpd_init(struct device_node *dn, struct generic_pm_domain *genpd,
+		   struct dev_power_governor *gov, bool is_off)
+{
+	int ret;
+
+	if (IS_ERR_OR_NULL(genpd))
+		return -EINVAL;
+
+	ret = of_genpd_device_parse_states(dn, genpd);
+	if (ret) {
+		pr_err("Error parsing genpd states for %s\n", genpd->name);
+		return ret;
+	}
+
+	pm_genpd_init(genpd, gov, is_off);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(of_pm_genpd_init);
+
 /*
  * Device Tree based PM domain providers.
  *
@@ -1817,9 +1837,9 @@ int genpd_dev_pm_attach(struct device *dev)
 	dev->pm_domain->detach = genpd_dev_pm_detach;
 	dev->pm_domain->sync = genpd_dev_pm_sync;
 
-	mutex_lock(&pd->lock);
+	genpd_lock(pd);
 	ret = genpd_poweron(pd, 0);
-	mutex_unlock(&pd->lock);
+	genpd_unlock(pd);
 out:
 	return ret ? -EPROBE_DEFER : 0;
 }
@@ -1877,7 +1897,7 @@ static int pm_genpd_summary_one(struct seq_file *s,
 	char state[16];
 	int ret;
 
-	ret = mutex_lock_interruptible(&genpd->lock);
+	ret = genpd_lock_interruptible(genpd);
 	if (ret)
 		return -ERESTARTSYS;
 
@@ -1903,7 +1923,8 @@ static int pm_genpd_summary_one(struct seq_file *s,
 	}
 
 	list_for_each_entry(pm_data, &genpd->dev_list, list_node) {
-		kobj_path = kobject_get_path(&pm_data->dev->kobj, GFP_KERNEL);
+		kobj_path = kobject_get_path(&pm_data->dev->kobj,
+				genpd->irq_safe ? GFP_ATOMIC : GFP_KERNEL);
 		if (kobj_path == NULL)
 			continue;
 
@@ -1914,7 +1935,7 @@ static int pm_genpd_summary_one(struct seq_file *s,
 
 	seq_puts(s, "\n");
 exit:
-	mutex_unlock(&genpd->lock);
+	genpd_unlock(genpd);
 
 	return 0;
 }

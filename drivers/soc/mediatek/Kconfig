@@ -30,3 +30,10 @@ config MTK_SCPSYS
 	help
 	  Say yes here to add support for the MediaTek SCPSYS power domain
 	  driver.
+
+config MTK_SIP
+        bool "Mediatek SIP Support"
+	depends on ARCH_MEDIATEK || COMPILE_TEST
+	depends on HAVE_ARM_SMCCC
+	help
+	Say yes here to add support for the MediaTek SIP call.
