@@ -21,6 +21,7 @@
 #include <linux/pm_domain.h>
 #include <linux/regmap.h>
 #include <linux/soc/mediatek/infracfg.h>
+#include <linux/soc/mediatek/mtk-sip.h>
 #include <linux/regulator/consumer.h>
 #include <dt-bindings/power/mt8173-power.h>
 
@@ -184,6 +185,7 @@ struct scp {
 	struct device *dev;
 	void __iomem *base;
 	struct regmap *infracfg;
+	bool sip_support;
 };
 
 static int scpsys_domain_is_on(struct scp_domain *scpd)
@@ -207,9 +209,8 @@ static int scpsys_domain_is_on(struct scp_domain *scpd)
 	return -EINVAL;
 }
 
-static int scpsys_power_on(struct generic_pm_domain *genpd)
+static int scpsys_power_on_mtcmos(struct scp_domain *scpd)
 {
-	struct scp_domain *scpd = container_of(genpd, struct scp_domain, genpd);
 	struct scp *scp = scpd->scp;
 	unsigned long timeout;
 	bool expired;
@@ -217,22 +218,11 @@ static int scpsys_power_on(struct generic_pm_domain *genpd)
 	u32 sram_pdn_ack = scpd->data->sram_pdn_ack_bits;
 	u32 val;
 	int ret;
-	int i;
 
 	if (scpd->supply) {
 		ret = regulator_enable(scpd->supply);
 		if (ret)
 			return ret;
-	}
-
-	for (i = 0; i < MAX_CLKS && scpd->clk[i]; i++) {
-		ret = clk_prepare_enable(scpd->clk[i]);
-		if (ret) {
-			for (--i; i >= 0; i--)
-				clk_disable_unprepare(scpd->clk[i]);
-
-			goto err_clk;
-		}
 	}
 
 	val = readl(ctl_addr);
@@ -249,10 +239,8 @@ static int scpsys_power_on(struct generic_pm_domain *genpd)
 		if (ret > 0)
 			break;
 
-		if (expired) {
-			ret = -ETIMEDOUT;
-			goto err_pwr_ack;
-		}
+		if (expired)
+			return -ETIMEDOUT;
 
 		cpu_relax();
 
@@ -277,10 +265,8 @@ static int scpsys_power_on(struct generic_pm_domain *genpd)
 	expired = false;
 	while (sram_pdn_ack && (readl(ctl_addr) & sram_pdn_ack)) {
 
-		if (expired) {
-			ret = -ETIMEDOUT;
-			goto err_pwr_ack;
-		}
+		if (expired)
+			return  -ETIMEDOUT;
 
 		cpu_relax();
 
@@ -292,28 +278,14 @@ static int scpsys_power_on(struct generic_pm_domain *genpd)
 		ret = mtk_infracfg_clear_bus_protection(scp->infracfg,
 				scpd->data->bus_prot_mask);
 		if (ret)
-			goto err_pwr_ack;
+			return (ret);
 	}
 
 	return 0;
-
-err_pwr_ack:
-	for (i = MAX_CLKS - 1; i >= 0; i--) {
-		if (scpd->clk[i])
-			clk_disable_unprepare(scpd->clk[i]);
-	}
-err_clk:
-	if (scpd->supply)
-		regulator_disable(scpd->supply);
-
-	dev_err(scp->dev, "Failed to power on domain %s\n", genpd->name);
-
-	return ret;
 }
 
-static int scpsys_power_off(struct generic_pm_domain *genpd)
+static int scpsys_power_off_mtcmos(struct scp_domain *scpd)
 {
-	struct scp_domain *scpd = container_of(genpd, struct scp_domain, genpd);
 	struct scp *scp = scpd->scp;
 	unsigned long timeout;
 	bool expired;
@@ -321,13 +293,12 @@ static int scpsys_power_off(struct generic_pm_domain *genpd)
 	u32 pdn_ack = scpd->data->sram_pdn_ack_bits;
 	u32 val;
 	int ret;
-	int i;
 
 	if (scpd->data->bus_prot_mask) {
 		ret = mtk_infracfg_set_bus_protection(scp->infracfg,
 				scpd->data->bus_prot_mask);
 		if (ret)
-			goto out;
+			return ret;
 	}
 
 	val = readl(ctl_addr);
@@ -338,10 +309,9 @@ static int scpsys_power_off(struct generic_pm_domain *genpd)
 	timeout = jiffies + HZ;
 	expired = false;
 	while (pdn_ack && (readl(ctl_addr) & pdn_ack) != pdn_ack) {
-		if (expired) {
-			ret = -ETIMEDOUT;
-			goto out;
-		}
+
+		if (expired)
+			return -ETIMEDOUT;
 
 		cpu_relax();
 
@@ -372,16 +342,72 @@ static int scpsys_power_off(struct generic_pm_domain *genpd)
 		if (ret == 0)
 			break;
 
-		if (expired) {
-			ret = -ETIMEDOUT;
-			goto out;
-		}
+		if (expired)
+			return -ETIMEDOUT;
 
 		cpu_relax();
 
 		if (time_after(jiffies, timeout))
 			expired = true;
 	}
+
+	return 0;
+}
+
+static int scpsys_power_on(struct generic_pm_domain *genpd)
+{
+	struct scp_domain *scpd = container_of(genpd, struct scp_domain, genpd);
+	struct scp *scp = scpd->scp;
+	void __iomem *ctl_addr = scp->base + scpd->data->ctl_offs;
+	int ret;
+	int i;
+
+	for (i = 0; i < MAX_CLKS && scpd->clk[i]; i++) {
+		ret = clk_prepare_enable(scpd->clk[i]);
+		if (ret) {
+			for (--i; i >= 0; i--)
+				clk_disable_unprepare(scpd->clk[i]);
+
+			goto err_clk;
+		}
+	}
+
+	if (!scp->sip_support)
+		ret = scpsys_power_on_mtcmos(scpd);
+	else
+		ret = mtk_sip_simple_call(MTK_SIP_PWR_ON_MTCMOS,
+				  ctl_addr - scp->base, 0, 0);
+	if (ret)
+		goto err_pwr_ack;
+
+	return 0;
+
+err_pwr_ack:
+	for (i = MAX_CLKS - 1; i >= 0; i--) {
+		if (scpd->clk[i])
+			clk_disable_unprepare(scpd->clk[i]);
+	}
+err_clk:
+	dev_err(scp->dev, "Failed to power on domain %s\n", genpd->name);
+
+	return ret;
+}
+
+static int scpsys_power_off(struct generic_pm_domain *genpd)
+{
+	struct scp_domain *scpd = container_of(genpd, struct scp_domain, genpd);
+	struct scp *scp = scpd->scp;
+	void __iomem *ctl_addr = scp->base + scpd->data->ctl_offs;
+	int ret;
+	int i;
+
+	if (!scp->sip_support)
+		ret = scpsys_power_off_mtcmos(scpd);
+	else
+		ret = mtk_sip_simple_call(MTK_SIP_PWR_OFF_MTCMOS,
+				  ctl_addr - scp->base, 0, 0);
+	if (ret)
+		goto out;
 
 	for (i = 0; i < MAX_CLKS && scpd->clk[i]; i++)
 		clk_disable_unprepare(scpd->clk[i]);
@@ -520,6 +546,13 @@ static int scpsys_probe(struct platform_device *pdev)
 	ret = of_genpd_add_provider_onecell(pdev->dev.of_node, pd_data);
 	if (ret)
 		dev_err(&pdev->dev, "Failed to add OF provider: %d\n", ret);
+
+	ret = mtk_sip_simple_call(MTK_SIP_PWR_MTCMOS_SUPPORT, 0, 0, 0);
+	if (ret) {
+		scp->sip_support = false;
+		dev_info(&pdev->dev, "SIP call is not supported: %d\n", ret);
+	} else
+		scp->sip_support = true;
 
 	return 0;
 }
