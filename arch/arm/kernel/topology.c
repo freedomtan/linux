@@ -153,6 +153,7 @@ static bool cap_from_dt = true;
 static u32 *raw_capacity;
 static bool cap_parsing_failed;
 static u32 capacity_scale;
+static bool asym_cpucap;
 
 static int __init parse_cpu_capacity(struct device_node *cpu_node, int cpu)
 {
@@ -209,6 +210,8 @@ static void normalize_cpu_capacity(void)
 		set_capacity_scale(cpu, capacity);
 		pr_debug("cpu_capacity: CPU%d cpu_capacity=%lu\n",
 			cpu, arch_scale_cpu_capacity(NULL, cpu));
+		if (capacity < capacity_scale)
+			asym_cpucap = true;
 	}
 	mutex_unlock(&cpu_scale_mutex);
 }
@@ -375,6 +378,9 @@ static void __init parse_dt_topology(void)
 		middle_capacity = ((max_capacity / 3)
 				>> (SCHED_CAPACITY_SHIFT-1)) + 1;
 
+	if (max_capacity && max_capacity != min_capacity)
+		asym_cpucap = true;
+
 	if (cap_from_dt && !cap_parsing_failed)
 		normalize_cpu_capacity();
 }
@@ -390,6 +396,9 @@ static void update_cpu_capacity(unsigned int cpu)
 		return;
 
 	set_capacity_scale(cpu, cpu_capacity(cpu) / middle_capacity);
+
+	if (scale_cpu_capacity(NULL, cpu) < SCHED_CAPACITY_SCALE)
+		asym_cpucap = true;
 
 	pr_info("CPU%u: update cpu_capacity %lu\n",
 		cpu, arch_scale_cpu_capacity(NULL, cpu));
@@ -506,12 +515,17 @@ static inline int cpu_corepower_flags(void)
 	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN;
 }
 
+static inline int arm_cpu_cpu_flags(void)
+{
+	return asym_cpucap ? SD_ASYM_CPUCAPACITY : 0;
+}
+
 static struct sched_domain_topology_level arm_topology[] = {
 #ifdef CONFIG_SCHED_MC
 	{ cpu_corepower_mask, cpu_corepower_flags, SD_INIT_NAME(GMC) },
 	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
 #endif
-	{ cpu_cpu_mask, SD_INIT_NAME(DIE) },
+	{ cpu_cpu_mask, arm_cpu_cpu_flags, SD_INIT_NAME(DIE) },
 	{ NULL, },
 };
 
