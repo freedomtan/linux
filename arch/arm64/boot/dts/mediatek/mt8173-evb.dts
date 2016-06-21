@@ -429,6 +429,12 @@
 	pinctrl-0 = <&spi_pins_a>;
 	mediatek,pad-select = <0>;
 	status = "okay";
+
+	spidev@0 {
+		compatible = "spidev";
+		spi-max-frequency = <50000000>;
+		reg = <0>;
+	};
 };
 
 &cpu0 {
