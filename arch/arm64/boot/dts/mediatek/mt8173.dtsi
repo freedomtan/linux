@@ -157,6 +157,7 @@
 			#cooling-min-level = <0>;
 			#cooling-max-level = <7>;
 			dynamic-power-coefficient = <263>;
+			capacity-dmips-mhz = <485>;
 		};
 
 		cpu1: cpu@1 {
@@ -174,6 +175,7 @@
 			#cooling-cells = <2>;
 			#cooling-min-level = <0>;
 			#cooling-max-level = <7>;
+			capacity-dmips-mhz = <485>;
 		};
 
 		cpu2: cpu@100 {
@@ -191,6 +193,7 @@
 			#cooling-cells = <2>;
 			#cooling-min-level = <0>;
 			#cooling-max-level = <7>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu3: cpu@101 {
@@ -208,6 +211,7 @@
 			#cooling-cells = <2>;
 			#cooling-min-level = <0>;
 			#cooling-max-level = <7>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		L2_0: l2-cache0 {
