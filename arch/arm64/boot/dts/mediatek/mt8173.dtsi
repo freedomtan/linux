@@ -144,6 +144,7 @@
 		cpu0: cpu@0 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53";
+			cci-control-port = <&cci_control4>;
 			reg = <0x000>;
 			enable-method = "psci";
 			next-level-cache = <&L2_0>;
@@ -161,6 +162,7 @@
 		cpu1: cpu@1 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53";
+			cci-control-port = <&cci_control4>;
 			reg = <0x001>;
 			enable-method = "psci";
 			next-level-cache = <&L2_0>;
@@ -177,6 +179,7 @@
 		cpu2: cpu@100 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a57";
+			cci-control-port = <&cci_control3>;
 			reg = <0x100>;
 			enable-method = "psci";
 			next-level-cache = <&L2_1>;
@@ -193,6 +196,7 @@
 		cpu3: cpu@101 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a57";
+			cci-control-port = <&cci_control3>;
 			reg = <0x101>;
 			enable-method = "psci";
 			next-level-cache = <&L2_1>;
@@ -447,7 +451,8 @@
 	};
 
 	pmu_a57 {
-		compatible = "arm,cortex-a57-pmu";
+		#compatible = "arm,cortex-a57-pmu";
+		compatible = "arm,cortex-a72-pmu";
 		interrupts = <GIC_SPI 62 IRQ_TYPE_LEVEL_HIGH>,
 			<GIC_SPI 63 IRQ_TYPE_LEVEL_HIGH>;
 		interrupt-affinity = <&cpu2>, <&cpu3>;
@@ -665,6 +670,42 @@
 			      <0 0x10226000 0 0x2000>;
 			interrupts = <GIC_PPI 9
 				(GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_HIGH)>;
+		};
+
+		cci: cci@10390000 {
+			compatible = "arm,cci-400";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			reg = <0x0 0x10390000 0 0x1000>;
+			ranges = <0x0 0x0 0x10390000 0x10000>;
+
+			cci_control0: slave-if@1000 {
+				compatible = "arm,cci-400-ctrl-if";
+				interface-type = "ace-lite";
+				reg = <0x1000 0x1000>;
+			};
+
+			cci_control3: slave-if@4000 {
+				compatible = "arm,cci-400-ctrl-if";
+				interface-type = "ace";
+				reg = <0x4000 0x1000>;
+			};
+
+			cci_control4: slave-if@5000 {
+				compatible = "arm,cci-400-ctrl-if";
+				interface-type = "ace";
+				reg = <0x5000 0x1000>;
+			};
+
+			pmu@9000 {
+				compatible = "arm,cci-400-pmu,r1";
+				reg = <0x9000 0x5000>;
+				interrupts = <GIC_SPI 101 IRQ_TYPE_LEVEL_HIGH>,
+					<GIC_SPI 102 IRQ_TYPE_LEVEL_HIGH>,
+					<GIC_SPI 103 IRQ_TYPE_LEVEL_HIGH>,
+					<GIC_SPI 104 IRQ_TYPE_LEVEL_HIGH>,
+					<GIC_SPI 105 IRQ_TYPE_LEVEL_HIGH>;
+			};
 		};
 
 		auxadc: auxadc@11001000 {
