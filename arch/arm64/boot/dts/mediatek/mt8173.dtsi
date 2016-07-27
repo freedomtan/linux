@@ -26,6 +26,80 @@
 	#address-cells = <2>;
 	#size-cells = <2>;
 
+	cluster0_opp: opp_table0 {
+		compatible = "operating-points-v2";
+		opp-shared;
+		opp@507000000 {
+			opp-hz = /bits/ 64 <507000000>;
+			opp-microvolt = <859000>;
+		};
+		opp@702000000 {
+			opp-hz = /bits/ 64 <702000000>;
+			opp-microvolt = <908000>;
+		};
+		opp@1001000000 {
+			opp-hz = /bits/ 64 <1001000000>;
+			opp-microvolt = <983000>;
+		};
+		opp@1105000000 {
+			opp-hz = /bits/ 64 <1105000000>;
+			opp-microvolt = <1009000>;
+		};
+		opp@1183000000 {
+			opp-hz = /bits/ 64 <1183000000>;
+			opp-microvolt = <1028000>;
+		};
+		opp@1404000000 {
+			opp-hz = /bits/ 64 <1404000000>;
+			opp-microvolt = <1083000>;
+		};
+		opp@1508000000 {
+			opp-hz = /bits/ 64 <1508000000>;
+			opp-microvolt = <1109000>;
+		};
+		opp@1573000000 {
+			opp-hz = /bits/ 64 <1573000000>;
+			opp-microvolt = <1125000>;
+		};
+	};
+
+	cluster1_opp: opp_table1 {
+		compatible = "operating-points-v2";
+		opp-shared;
+		opp@507000000 {
+			opp-hz = /bits/ 64 <507000000>;
+			opp-microvolt = <828000>;
+		};
+		opp@702000000 {
+			opp-hz = /bits/ 64 <702000000>;
+			opp-microvolt = <867000>;
+		};
+		opp@1001000000 {
+			opp-hz = /bits/ 64 <1001000000>;
+			opp-microvolt = <927000>;
+		};
+		opp@1209000000 {
+			opp-hz = /bits/ 64 <1209000000>;
+			opp-microvolt = <968000>;
+		};
+		opp@1404000000 {
+			opp-hz = /bits/ 64 <1404000000>;
+			opp-microvolt = <1007000>;
+		};
+		opp@1612000000 {
+			opp-hz = /bits/ 64 <1612000000>;
+			opp-microvolt = <1049000>;
+		};
+		opp@1807000000 {
+			opp-hz = /bits/ 64 <1807000000>;
+			opp-microvolt = <1089000>;
+		};
+		opp@1989000000 {
+			opp-hz = /bits/ 64 <1989000000>;
+			opp-microvolt = <1125000>;
+		};
+	};
+
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -54,32 +128,80 @@
 			device_type = "cpu";
 			compatible = "arm,cortex-a53";
 			reg = <0x000>;
+			next-level-cache = <&L2_0>;
+			clocks = <&infracfg CLK_INFRA_CA53SEL>,
+				 <&apmixedsys CLK_APMIXED_MAINPLL>;
+			clock-names = "cpu", "intermediate";
+			operating-points-v2 = <&cluster0_opp>;
+			#cooling-cells = <2>;
+			#cooling-min-level = <0>;
+			#cooling-max-level = <7>;
+			dynamic-power-coefficient = <263>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			power-domains = <&CPU_PD0>;
 		};
 
 		cpu1: cpu@1 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53";
 			reg = <0x001>;
+			next-level-cache = <&L2_0>;
+			clocks = <&infracfg CLK_INFRA_CA53SEL>,
+				 <&apmixedsys CLK_APMIXED_MAINPLL>;
+			clock-names = "cpu", "intermediate";
+			operating-points-v2 = <&cluster0_opp>;
+			#cooling-cells = <2>;
+			#cooling-min-level = <0>;
+			#cooling-max-level = <7>;
+			dynamic-power-coefficient = <263>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			power-domains = <&CPU_PD0>;
 		};
 
 		cpu2: cpu@100 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a57";
 			reg = <0x100>;
+			next-level-cache = <&L2_1>;
+			clocks = <&infracfg CLK_INFRA_CA57SEL>,
+				 <&apmixedsys CLK_APMIXED_MAINPLL>;
+			clock-names = "cpu", "intermediate";
+			operating-points-v2 = <&cluster1_opp>;
+			#cooling-cells = <2>;
+			#cooling-min-level = <0>;
+			#cooling-max-level = <7>;
+			dynamic-power-coefficient = <263>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			power-domains = <&CPU_PD1>;
 		};
 
 		cpu3: cpu@101 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a57";
 			reg = <0x101>;
+			next-level-cache = <&L2_1>;
+			clocks = <&infracfg CLK_INFRA_CA57SEL>,
+				 <&apmixedsys CLK_APMIXED_MAINPLL>;
+			clock-names = "cpu", "intermediate";
+			operating-points-v2 = <&cluster1_opp>;
+			#cooling-cells = <2>;
+			#cooling-min-level = <0>;
+			#cooling-max-level = <7>;
+			dynamic-power-coefficient = <263>;
 			enable-method = "psci";
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			power-domains = <&CPU_PD1>;
+		};
+
+		L2_0: l2-cache0 {
+			compatible = "cache";
+		};
+
+		L2_1: l2-cache1 {
+			compatible = "cache";
 		};
 
 		idle-states {
@@ -88,13 +210,57 @@
 			CPU_SLEEP_0: cpu-sleep-0 {
 				compatible = "arm,idle-state";
 				local-timer-stop;
-				entry-latency-us = <639>;
-				exit-latency-us = <680>;
-				min-residency-us = <1088>;
-				arm,psci-suspend-param = <0x0010000>;
+				entry-latency-us = <100>;
+				exit-latency-us = <80>;
+				min-residency-us = <2000>;
+				arm,psci-suspend-param = <0x40000002>;
 			};
 		};
 	};
+
+	CPU_PD0: cpu-pd@0 {
+		compatible = "arm,pd","arm,cortex-a53";
+		#power-domain-cells = <0>;
+		power-states = <&CLUSTER0_RET>;
+	};
+
+	CPU_PD1: cpu-pd@1 {
+		compatible = "arm,pd","arm,cortex-a57";
+		#power-domain-cells = <0>;
+		power-states = <&CLUSTER1_RET>;
+	};
+
+	pd-power-states {
+		CLUSTER0_RET: power-state1@1 {
+			// state-param = <0x40000022>;
+			state-param = <0x00000020>;
+			entry-latency-us = <350>;
+			exit-latency-us = <80>;
+			residency-us = <3000>;
+		};
+
+		CLUSTER0_PWR_DWN: power-state1@2 {
+			state-param = <0x40000033>;
+			entry-latency-us = <300>;
+			exit-latency-us = <120>;
+			residency-us = <600>;
+		};
+
+		CLUSTER1_RET: power-state2@1 {
+			// state-param = <0x40000022>;
+			state-param = <0x00000020>;
+			entry-latency-us = <350>;
+			exit-latency-us = <80>;
+			residency-us = <3000>;
+		};
+
+		CLUSTER1_PWR_DWN: power-state2@2 {
+			state-param = <0x40000033>;
+			entry-latency-us = <500>;
+			exit-latency-us = <150>;
+			residency-us = <600>;
+		};
+        };
 
 	psci {
 		compatible = "arm,psci-1.0", "arm,psci-0.2", "arm,psci";
@@ -126,12 +292,12 @@
 	};
 
 	thermal-zones {
-		cpu_thermal: cpu_thermal {
+		cpu_thermal0: cpu_thermal0 {
 			polling-delay-passive = <1000>; /* milliseconds */
 			polling-delay = <1000>; /* milliseconds */
 
-			thermal-sensors = <&thermal>;
-			sustainable-power = <1500>; /* milliwatts */
+			thermal-sensors = <&thermal 0>;
+			sustainable-power = <500>; /* milliwatts */
 
 			trips {
 				threshold: trip-point@0 {
@@ -159,10 +325,97 @@
 					cooling-device = <&cpu0 0 0>;
 					contribution = <1024>;
 				};
+			};
+		};
+
+		cpu_thermal1: cpu_thermal1 {
+			polling-delay-passive = <1000>; /* milliseconds */
+			polling-delay = <1000>; /* milliseconds */
+
+			thermal-sensors = <&thermal 1>;
+			sustainable-power = <1500>; /* milliwatts */
+
+			trips {
+				threshold1: trip-point@0 {
+					temperature = <68000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				target1: trip-point@1 {
+					temperature = <85000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				cpu_crit1: cpu_crit@0 {
+					temperature = <115000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
+			};
+		};
+
+		cpu_thermal2: cpu_thermal2 {
+			polling-delay-passive = <1000>; /* milliseconds */
+			polling-delay = <1000>; /* milliseconds */
+
+			thermal-sensors = <&thermal 2>;
+			sustainable-power = <1500>; /* milliwatts */
+
+			trips {
+				threshold2: trip-point@0 {
+					temperature = <68000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				target2: trip-point@1 {
+					temperature = <85000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				cpu_crit2: cpu_crit@0 {
+					temperature = <115000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
+			};
+
+			cooling-maps {
 				map@1 {
-					trip = <&target>;
+					trip = <&target2>;
 					cooling-device = <&cpu2 0 0>;
 					contribution = <2048>;
+				};
+			};
+		};
+
+		cpu_thermal3: cpu_thermal3 {
+			polling-delay-passive = <1000>; /* milliseconds */
+			polling-delay = <1000>; /* milliseconds */
+
+			thermal-sensors = <&thermal 3>;
+			sustainable-power = <1500>; /* milliwatts */
+
+			trips {
+				threshold3: trip-point@0 {
+					temperature = <68000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				target3: trip-point@1 {
+					temperature = <85000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				cpu_crit3: cpu_crit@0 {
+					temperature = <115000>;
+					hysteresis = <2000>;
+					type = "critical";
 				};
 			};
 		};
@@ -179,6 +432,20 @@
 			      (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>,
 			     <GIC_PPI 10
 			      (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>;
+	};
+
+	pmu_a53 {
+		compatible = "arm,cortex-a53-pmu";
+		interrupts = <GIC_SPI 60 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 61 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt_affinity = <&cpu0>, <&cpu1>;
+	};
+
+	pmu_a57 {
+		compatible = "arm,cortex-a57-pmu";
+		interrupts = <GIC_SPI 62 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 63 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt_affinity = <&cpu2>, <&cpu3>;
 	};
 
 	soc {
@@ -310,6 +577,14 @@
 			reset-names = "pwrap";
 			clocks = <&infracfg CLK_INFRA_PMICSPI>, <&infracfg CLK_INFRA_PMICWRAP>;
 			clock-names = "spi", "wrap";
+		};
+
+		cec: cec@10013000 {
+			compatible = "mediatek,mt8173-cec";
+			reg = <0 0x10013000 0 0xbc>;
+			interrupts = <GIC_SPI 167 IRQ_TYPE_LEVEL_LOW>;
+			clocks = <&infracfg CLK_INFRA_CEC>;
+			status = "disabled";
 		};
 
 		sysirq: intpol-controller@10200620 {
@@ -463,7 +738,7 @@
 		};
 
 		thermal: thermal@1100b000 {
-			#thermal-sensor-cells = <0>;
+			#thermal-sensor-cells = <1>;
 			compatible = "mediatek,mt8173-thermal";
 			reg = <0 0x1100b000 0 0x1000>;
 			interrupts = <0 70 IRQ_TYPE_LEVEL_LOW>;

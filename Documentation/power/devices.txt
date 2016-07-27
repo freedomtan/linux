@@ -607,7 +607,17 @@ individually.  Instead, a set of devices sharing a power resource can be put
 into a low-power state together at the same time by turning off the shared
 power resource.  Of course, they also need to be put into the full-power state
 together, by turning the shared power resource on.  A set of devices with this
-property is often referred to as a power domain.
+property is often referred to as a power domain. A power domain may also be
+nested inside another power domain.
+
+Devices, by default, operate in process context. If a device can operate in
+IRQ safe context that has to be explicitly indicated by setting the irq_safe
+boolean inside struct generic_pm_domain to be true. Power domains by default,
+operate in process context but could have devices that are IRQ safe. Such
+power domains cannot be powered on/off during runtime PM. On the other hand,
+IRQ safe PM domains that have IRQ safe devices may be powered off when all
+the devices are in idle. An IRQ safe domain may only be attached as a
+subdomain to another IRQ safe domain.
 
 Support for power domains is provided through the pm_domain field of struct
 device.  This field is a pointer to an object of type struct dev_pm_domain,
