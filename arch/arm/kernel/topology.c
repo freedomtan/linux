@@ -44,6 +44,7 @@
 static DEFINE_PER_CPU(unsigned long, cpu_scale) = SCHED_CAPACITY_SCALE;
 static DEFINE_MUTEX(cpu_scale_mutex);
 static bool asym_cpucap;
+static bool sd_mc_share_cap, sd_die_share_cap;
 static bool update_flags;
 
 unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu)
@@ -262,6 +263,13 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 
 	switch (val) {
 	case CPUFREQ_NOTIFY:
+		cpu = cpumask_first(policy->related_cpus);
+
+		if (cpumask_subset(cpu_coregroup_mask(cpu), policy->related_cpus))
+			sd_mc_share_cap = true;
+		else if (cpumask_subset(cpu_cpu_mask(cpu), policy->related_cpus))
+			sd_die_share_cap = true;
+
 		pr_debug("cpu_capacity: init cpu capacity for CPUs [%*pbl] (to_visit=%*pbl)\n",
 				cpumask_pr_args(policy->related_cpus),
 				cpumask_pr_args(cpus_to_visit));
@@ -273,10 +281,12 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 					    policy->cpuinfo.max_freq / 1000UL;
 			capacity_scale = max(raw_capacity[cpu], capacity_scale);
 		}
+
 		if (cpumask_empty(cpus_to_visit)) {
 			asym = asym_cpucap;
 			normalize_cpu_capacity();
-			if (asym != asym_cpucap)
+			if (asym != asym_cpucap ||
+			    sd_mc_share_cap || sd_die_share_cap)
 				update_sched_flags();
 			kfree(raw_capacity);
 			pr_debug("cpu_capacity: parsing done\n");
@@ -430,6 +440,9 @@ static void update_cpu_capacity(unsigned int cpu)
 	if (scale_cpu_capacity(NULL, cpu) < SCHED_CAPACITY_SCALE)
 		asym_cpucap = true;
 
+	if (scale_cpu_capacity(NULL, cpu) < SCHED_CAPACITY_SCALE)
+		asym_cpucap = true;
+
 	pr_info("CPU%u: update cpu_capacity %lu\n",
 		cpu, arch_scale_cpu_capacity(NULL, cpu));
 }
@@ -547,12 +560,25 @@ void store_cpu_topology(unsigned int cpuid)
 
 static inline int cpu_corepower_flags(void)
 {
-	return SD_SHARE_PKG_RESOURCES  | SD_SHARE_POWERDOMAIN;
+	int mc_flags = SD_SHARE_PKG_RESOURCES | SD_SHARE_POWERDOMAIN;
+
+	if (sd_mc_share_cap)
+		mc_flags |= SD_SHARE_CAP_STATES;
+
+	return mc_flags;
 }
 
 static inline int arm_cpu_cpu_flags(void)
 {
-	return asym_cpucap ? SD_ASYM_CPUCAPACITY : 0;
+	int die_flags = 0;
+
+	if (asym_cpucap)
+		die_flags |= SD_ASYM_CPUCAPACITY;
+
+	if (sd_die_share_cap)
+		die_flags |= SD_SHARE_CAP_STATES;
+
+	return die_flags;
 }
 
 static struct sched_domain_topology_level arm_topology[] = {
