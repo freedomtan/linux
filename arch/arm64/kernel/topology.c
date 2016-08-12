@@ -29,6 +29,7 @@
 static DEFINE_PER_CPU(unsigned long, cpu_scale) = SCHED_CAPACITY_SCALE;
 static DEFINE_MUTEX(cpu_scale_mutex);
 static bool asym_cpucap;
+static bool sd_mc_share_cap, sd_die_share_cap;
 static bool update_flags;
 
 unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu)
@@ -219,6 +220,13 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 
 	switch (val) {
 	case CPUFREQ_NOTIFY:
+		cpu = cpumask_first(policy->related_cpus);
+
+		if (cpumask_subset(cpu_coregroup_mask(cpu), policy->related_cpus))
+			sd_mc_share_cap = true;
+		else if (cpumask_subset(cpu_cpu_mask(cpu), policy->related_cpus))
+			sd_die_share_cap = true;
+
 		pr_debug("cpu_capacity: init cpu capacity for CPUs [%*pbl] (to_visit=%*pbl)\n",
 				cpumask_pr_args(policy->related_cpus),
 				cpumask_pr_args(cpus_to_visit));
@@ -233,7 +241,8 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 		if (cpumask_empty(cpus_to_visit)) {
 			asym = asym_cpucap;
 			normalize_cpu_capacity();
-			if (asym != asym_cpucap)
+			if (asym != asym_cpucap ||
+			    sd_mc_share_cap || sd_die_share_cap)
 				update_sched_flags();
 			kfree(raw_capacity);
 			pr_debug("cpu_capacity: parsing done\n");
@@ -475,7 +484,25 @@ const struct cpumask *cpu_coregroup_mask(int cpu)
 
 static int cpu_cpu_flags(void)
 {
-	return asym_cpucap ? SD_ASYM_CPUCAPACITY : 0;
+	int die_flags = 0;
+
+	if (asym_cpucap)
+		die_flags |= SD_ASYM_CPUCAPACITY;
+
+	if (sd_die_share_cap)
+		die_flags |= SD_SHARE_CAP_STATES;
+
+	return die_flags;
+}
+
+static int cpu_coregroup_flags(void)
+{
+	int mc_flags = SD_SHARE_PKG_RESOURCES;
+
+	if (sd_mc_share_cap)
+		mc_flags |= SD_SHARE_CAP_STATES;
+
+	return mc_flags;
 }
 
 static void update_siblings_masks(unsigned int cpuid)
@@ -561,7 +588,7 @@ static void __init reset_cpu_topology(void)
 
 static struct sched_domain_topology_level arm64_topology[] = {
 #ifdef CONFIG_SCHED_MC
-	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
+	{ cpu_coregroup_mask, cpu_coregroup_flags, SD_INIT_NAME(MC) },
 #endif
 	{ cpu_cpu_mask, cpu_cpu_flags, SD_INIT_NAME(DIE) },
 	{ NULL, }
