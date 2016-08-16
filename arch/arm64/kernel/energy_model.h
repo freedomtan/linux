@@ -107,6 +107,52 @@ static struct sched_group_energy energy_core_juno_a57 = {
 	  .cap_states     = cap_states_core_juno_a57,
 };
 
+/* HiKey */
+
+static struct idle_state idle_states_cluster_hikey[] = {
+	{ .power = 107 }, /* arch_cpu_idle() (active idle) = WFI */
+	{ .power = 107 }, /* WFI */
+	{ .power =  47 }, /* cpu-sleep */
+	{ .power =   0 }, /* cluster-sleep */
+};
+
+static struct capacity_state cap_states_cluster_hikey[] = {
+	{ .cap =  178, .power =  16, }, /*  208 MHz */
+	{ .cap =  369, .power =  29, }, /*  432 MHz */
+	{ .cap =  622, .power =  47, }, /*  729 MHz */
+	{ .cap =  819, .power =  75, }, /*  960 MHz */
+	{ .cap = 1024, .power = 112, }, /* 1200 MHz */
+};
+
+static struct sched_group_energy energy_cluster_hikey = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_cluster_hikey),
+	.idle_states    = idle_states_cluster_hikey,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_cluster_hikey),
+	.cap_states     = cap_states_cluster_hikey,
+};
+
+static struct idle_state idle_states_core_hikey[] = {
+	{ .power = 15 }, /* arch_cpu_idle() (active idle) = WFI */
+	{ .power = 15 }, /* WFI */
+	{ .power =  0 }, /* cpu-sleep */
+	{ .power =  0 }, /* cluster-sleep */
+};
+
+static struct capacity_state cap_states_core_hikey[] = {
+	{ .cap =  178, .power =  69, }, /*  208 MHz */
+	{ .cap =  369, .power = 125, }, /*  432 MHz */
+	{ .cap =  622, .power = 224, }, /*  729 MHz */
+	{ .cap =  819, .power = 367, }, /*  960 MHz */
+	{ .cap = 1024, .power = 670, }, /* 1200 MHz */
+};
+
+static struct sched_group_energy energy_core_hikey = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_core_hikey),
+	.idle_states    = idle_states_core_hikey,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_core_hikey),
+	.cap_states     = cap_states_core_hikey,
+};
+
 /* An energy model contains core and cluster sched group energy for 2
  * clusters (cluster id 0 and 1). set_energy_model() relies on this
  * feature. It is enforced by a BUG_ON in energy().
@@ -122,8 +168,14 @@ static struct energy_model juno_model = {
 	{ &energy_cluster_juno_a57, &energy_cluster_juno_a53, },
 };
 
+static struct energy_model hikey_model = {
+	{ &energy_core_hikey, &energy_core_hikey, },
+	{ &energy_cluster_hikey, &energy_cluster_hikey, },
+};
+
 static struct of_device_id model_matches[] = {
 	{ .compatible = "arm,juno", .data = &juno_model },
+	{ .compatible = "hisilicon,hi6220-hikey", .data = &hikey_model },
 	{},
 };
 
