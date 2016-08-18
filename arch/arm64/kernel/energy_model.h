@@ -153,24 +153,27 @@ static struct sched_group_energy energy_core_hikey = {
 	.cap_states     = cap_states_core_hikey,
 };
 
-/* An energy model contains core and cluster sched group energy for 2
- * clusters (cluster id 0 and 1). set_energy_model() relies on this
- * feature. It is enforced by a BUG_ON in energy().
+/* An energy model contains core, cluster and system sched group energy
+ * for 2 clusters (cluster id 0 and 1). set_energy_model() relies on
+ * this feature. It is enforced by a BUG_ON in energy().
  */
 
 struct energy_model {
 	struct sched_group_energy *core_energy[2];
 	struct sched_group_energy *cluster_energy[2];
+	struct sched_group_energy *system_energy[2];
 };
 
 static struct energy_model juno_model = {
 	{ &energy_core_juno_a57, &energy_core_juno_a53, },
 	{ &energy_cluster_juno_a57, &energy_cluster_juno_a53, },
+	{},
 };
 
 static struct energy_model hikey_model = {
 	{ &energy_core_hikey, &energy_core_hikey, },
 	{ &energy_cluster_hikey, &energy_cluster_hikey, },
+	{},
 };
 
 static struct of_device_id model_matches[] = {
@@ -179,14 +182,14 @@ static struct of_device_id model_matches[] = {
 	{},
 };
 
-static struct sched_group_energy **core_energy, **cluster_energy;
+struct sched_group_energy **core_energy, **cluster_energy, **system_energy;
 
 static void __init set_energy_model(void)
 {
 	const struct of_device_id *match;
 	struct energy_model *em;
 
-	BUG_ON(core_energy || cluster_energy);
+	BUG_ON(core_energy || cluster_energy || system_energy);
 
 	match = of_match_node(model_matches, of_root);
 
@@ -197,10 +200,12 @@ static void __init set_energy_model(void)
 
 	core_energy = em->core_energy;
 	cluster_energy = em->cluster_energy;
+	system_energy = em->system_energy;
 
-	pr_debug("energy model core[0,1]=[%p,%p] cluster=[%p,%p]\n",
+	pr_debug("energy model core[0,1]=[%p,%p] cluster=[%p,%p] system=[%p,%p]\n",
 		 em->core_energy[0], em->core_energy[1],
-		 em->cluster_energy[0], em->cluster_energy[1]);
+		 em->cluster_energy[0], em->cluster_energy[1],
+		 em->system_energy[0], em->system_energy[1]);
 }
 
 static inline
@@ -211,7 +216,8 @@ struct sched_group_energy *energy(int cpu, struct sched_group_energy **sge)
 	BUG_ON(idx != 0 && idx != 1);
 
 	pr_debug("cpu=%d %s%s[%d]=%p\n", cpu, (sge == core_energy) ?
-		 "core" : "cluster", "_energy", idx, sge[idx]);
+		 "core" : (sge == cluster_energy) ? "cluster" :
+		 "system", "_energy", idx, sge[idx]);
 
 	return sge[idx];
 }
@@ -226,4 +232,10 @@ static inline
 const struct sched_group_energy * const cpu_cluster_energy(int cpu)
 {
 	return cluster_energy ? energy(cpu, cluster_energy) : NULL;
+}
+
+static inline
+const struct sched_group_energy * const cpu_system_energy(int cpu)
+{
+	return system_energy ? energy(cpu, system_energy) : NULL;
 }
