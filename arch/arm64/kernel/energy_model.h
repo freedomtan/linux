@@ -109,6 +109,24 @@ static struct sched_group_energy energy_core_juno_a57 = {
 
 /* HiKey */
 
+static struct idle_state idle_states_system_hikey[] = {
+	{ .power = 0 }, /* arch_cpu_idle() (active idle) = WFI */
+	{ .power = 0 }, /* WFI */
+	{ .power = 0 }, /* cpu-sleep */
+	{ .power = 0 }, /* cluster-sleep */
+};
+
+static struct capacity_state cap_states_system_hikey[] = {
+	{ .cap = 1024, .power = 0, },
+};
+
+static struct sched_group_energy energy_system_hikey = {
+	.nr_idle_states = ARRAY_SIZE(idle_states_system_hikey),
+	.idle_states    = idle_states_system_hikey,
+	.nr_cap_states  = ARRAY_SIZE(cap_states_system_hikey),
+	.cap_states     = cap_states_system_hikey,
+};
+
 static struct idle_state idle_states_cluster_hikey[] = {
 	{ .power = 107 }, /* arch_cpu_idle() (active idle) = WFI */
 	{ .power = 107 }, /* WFI */
@@ -173,7 +191,7 @@ static struct energy_model juno_model = {
 static struct energy_model hikey_model = {
 	{ &energy_core_hikey, &energy_core_hikey, },
 	{ &energy_cluster_hikey, &energy_cluster_hikey, },
-	{},
+	{ &energy_system_hikey, &energy_system_hikey, },
 };
 
 static struct of_device_id model_matches[] = {
