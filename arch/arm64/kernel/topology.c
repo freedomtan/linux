@@ -101,6 +101,8 @@ static void normalize_cpu_capacity(void)
 #ifdef CONFIG_CPU_FREQ
 static cpumask_var_t cpus_to_visit;
 static bool cap_parsing_done;
+static void parsing_done_workfn(struct work_struct *work);
+static DECLARE_WORK(parsing_done_work, parsing_done_workfn);
 
 static int
 init_cpu_capacity_callback(struct notifier_block *nb,
@@ -131,6 +133,7 @@ init_cpu_capacity_callback(struct notifier_block *nb,
 			kfree(raw_capacity);
 			pr_debug("cpu_capacity: parsing done\n");
 			cap_parsing_done = true;
+			schedule_work(&parsing_done_work);
 		}
 	}
 	return 0;
@@ -155,6 +158,13 @@ static int __init register_cpufreq_notifier(void)
 					 CPUFREQ_POLICY_NOTIFIER);
 }
 core_initcall(register_cpufreq_notifier);
+
+static void parsing_done_workfn(struct work_struct *work)
+{
+	cpufreq_unregister_notifier(&init_cpu_capacity_notifier,
+					 CPUFREQ_POLICY_NOTIFIER);
+}
+
 #else
 static int __init free_raw_capacity(void)
 {
