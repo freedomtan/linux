@@ -150,6 +150,30 @@
 			     (GIC_CPU_MASK_SIMPLE(10) | IRQ_TYPE_LEVEL_LOW)>;
 	};
 
+	pmu_a53 {
+		compatible = "arm,cortex-a53-pmu";
+
+		interrupts = <GIC_SPI 50 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 51 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 52 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 53 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 54 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 55 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 56 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 57 IRQ_TYPE_LEVEL_HIGH>;
+
+		interrupt-affinity = <&cpu0>, <&cpu1>, <&cpu2>, <&cpu3>,
+				     <&cpu4>, <&cpu5>, <&cpu6>, <&cpu7>;
+	};
+
+	pmu_a72 {
+		compatible = "arm,cortex-a72-pmu";
+
+		interrupts = <GIC_SPI 58 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 59 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-affinity = <&cpu8>, <&cpu9>;
+	};
+
 	topckgen: topckgen@10000000 {
 		compatible = "mediatek,mt6797-topckgen";
 		reg = <0 0x10000000 0 0x1000>;
