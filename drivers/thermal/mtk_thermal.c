@@ -150,6 +150,7 @@ struct thermal_bank_cfg {
 
 struct mtk_thermal_bank {
 	struct mtk_thermal *mt;
+	struct thermal_zone_device *tz;
 	int id;
 };
 
@@ -371,22 +372,12 @@ static int mtk_thermal_bank_temperature(struct mtk_thermal_bank *bank)
 
 static int mtk_read_temp(void *data, int *temperature)
 {
-	struct mtk_thermal *mt = data;
-	int i;
-	int tempmax = INT_MIN;
-
-	for (i = 0; i < mt->conf->num_banks; i++) {
-		struct mtk_thermal_bank *bank = &mt->banks[i];
-
-		mtk_thermal_get_bank(bank);
-
-		tempmax = max(tempmax, mtk_thermal_bank_temperature(bank));
-
-		mtk_thermal_put_bank(bank);
-	}
-
-	*temperature = tempmax;
-
+	struct mtk_thermal_bank *bank = data;
+	
+	mtk_thermal_get_bank(bank);
+	*temperature = mtk_thermal_bank_temperature(bank);
+	mtk_thermal_put_bank(bank);
+	
 	return 0;
 }
 
@@ -584,7 +575,6 @@ static int mtk_thermal_probe(struct platform_device *pdev)
 	struct resource *res;
 	const struct of_device_id *of_id;
 	u64 auxadc_phys_base, apmixed_phys_base;
-	struct thermal_zone_device *tzdev;
 
 	mt = devm_kzalloc(&pdev->dev, sizeof(*mt), GFP_KERNEL);
 	if (!mt)
@@ -667,14 +657,16 @@ static int mtk_thermal_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, mt);
 
-	tzdev = devm_thermal_zone_of_sensor_register(&pdev->dev, 0, mt,
-						     &mtk_thermal_ops);
-	if (IS_ERR(tzdev)) {
-		ret = PTR_ERR(tzdev);
-		goto err_disable_clk_peri_therm;
-	}
+	for (i = 0; i < MT8173_NUM_ZONES; i++) {
+		struct mtk_thermal_bank *bank = &mt->banks[i];
+		bank->tz = devm_thermal_zone_of_sensor_register(&pdev->dev,
+			i, bank, &mtk_thermal_ops);
 
-	return 0;
+		if (IS_ERR(bank->tz)) {
+			ret = PTR_ERR(bank->tz);
+			goto err_disable_clk_peri_therm;
+		}
+	}
 
 err_disable_clk_peri_therm:
 	clk_disable_unprepare(mt->clk_peri_therm);
