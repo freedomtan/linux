@@ -76,6 +76,7 @@
 			enable-method = "psci";
 			reg = <0x000>;
 			next-level-cache = <&L2_0>;
+			capacity-dmips-mhz = <400>;
 		};
 
 		cpu1: cpu@1 {
@@ -84,6 +85,7 @@
 			enable-method = "psci";
 			reg = <0x001>;
 			next-level-cache = <&L2_0>;
+			capacity-dmips-mhz = <400>;
 		};
 
 		cpu2: cpu@2 {
@@ -92,6 +94,7 @@
 			enable-method = "psci";
 			reg = <0x002>;
 			next-level-cache = <&L2_0>;
+			capacity-dmips-mhz = <400>;
 		};
 
 		cpu3: cpu@3 {
@@ -100,6 +103,7 @@
 			enable-method = "psci";
 			reg = <0x003>;
 			next-level-cache = <&L2_0>;
+			capacity-dmips-mhz = <400>;
 		};
 
 		cpu4: cpu@100 {
@@ -108,6 +112,7 @@
 			enable-method = "psci";
 			reg = <0x100>;
 			next-level-cache = <&L2_1>;
+			capacity-dmips-mhz = <600>;
 		};
 
 		cpu5: cpu@101 {
@@ -116,6 +121,7 @@
 			enable-method = "psci";
 			reg = <0x101>;
 			next-level-cache = <&L2_1>;
+			capacity-dmips-mhz = <600>;
 		};
 
 		cpu6: cpu@102 {
@@ -124,6 +130,7 @@
 			enable-method = "psci";
 			reg = <0x102>;
 			next-level-cache = <&L2_1>;
+			capacity-dmips-mhz = <600>;
 		};
 
 		cpu7: cpu@103 {
@@ -132,6 +139,7 @@
 			enable-method = "psci";
 			reg = <0x103>;
 			next-level-cache = <&L2_1>;
+			capacity-dmips-mhz = <600>;
 		};
 
 		cpu8: cpu@200 {
@@ -140,6 +148,7 @@
 			enable-method = "psci";
 			reg = <0x200>;
 			next-level-cache = <&L2_2>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		cpu9: cpu@201 {
@@ -148,6 +157,7 @@
 			enable-method = "psci";
 			reg = <0x201>;
 			next-level-cache = <&L2_2>;
+			capacity-dmips-mhz = <1024>;
 		};
 
 		L2_0: l2-cache0 {
